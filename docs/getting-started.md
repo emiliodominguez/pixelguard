@@ -144,8 +144,56 @@ your-project/
     └── report.html           # HTML report (generated)
 ```
 
+## CLI Reference
+
+### `pixelguard init`
+
+Initialize Pixelguard in the current project.
+
+```bash
+npx pixelguard init [--force]
+```
+
+### `pixelguard test`
+
+Capture screenshots and compare against baseline.
+
+```bash
+npx pixelguard test [options]
+```
+
+Options:
+- `--update` - Update baseline with current screenshots
+- `--ci` - CI mode (machine-readable output, exit code 1 on diffs)
+- `--filter <pattern>` - Only test shots matching pattern
+- `--config, -c <path>` - Use a custom config file
+- `--serve` - Serve the HTML report after completion
+- `--port <number>` - Port for serving the report (default: 3333)
+- `--verbose` - Show detailed progress
+
+### `pixelguard list`
+
+List all configured shots without capturing.
+
+```bash
+npx pixelguard list [--config <path>]
+```
+
+### `pixelguard plugins`
+
+List and validate installed plugins.
+
+```bash
+npx pixelguard plugins [--config <path>] [--json]
+```
+
+Options:
+- `--config, -c <path>` - Use a custom config file
+- `--json` - Output in JSON format
+
 ## Next Steps
 
 - [Configuration Reference](./configuration.md) - Customize your setup
 - [CI Setup Guide](./ci-setup.md) - Run in continuous integration
+- [Plugins](./plugins.md) - Extend functionality with plugins
 - [Troubleshooting](./troubleshooting.md) - Common issues and solutions

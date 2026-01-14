@@ -15,7 +15,8 @@ Pixelguard uses a `pixelguard.config.json` file in your project root. All fields
 		"height": 720
 	},
 	"threshold": 0.01,
-	"outputDir": ".pixelguard"
+	"outputDir": ".pixelguard",
+	"concurrency": 4
 }
 ```
 
@@ -110,6 +111,26 @@ Lower values catch more subtle changes but may produce false positives from anti
 
 The directory for screenshots and reports.
 
+### `concurrency`
+
+**Type:** `number`
+**Default:** `4`
+
+Number of screenshots to capture in parallel. Higher values speed up capture but use more memory.
+
+- `1` - Sequential capture (slowest, lowest memory)
+- `4` - Default (good balance)
+- `8` - Faster capture for powerful machines
+- `16` - Maximum parallelism (high memory usage)
+
+Example:
+
+```json
+{
+	"concurrency": 8
+}
+```
+
 ### `shots`
 
 **Type:** `Shot[]`
@@ -192,6 +213,51 @@ To test multiple viewport sizes, create separate configs or use the `--filter` f
 			"path": "/iframe.html?id=button--primary&viewport=mobile"
 		}
 	]
+}
+```
+
+## Plugins
+
+Pixelguard supports plugins for extending functionality. See [Plugins](./plugins.md) for full documentation.
+
+### `plugins`
+
+**Type:** `(string | { name: string, options: object })[]`
+**Default:** `[]`
+
+List of plugins to load. Plugins can be npm packages or local paths.
+
+```json
+{
+	"plugins": [
+		"pixelguard-plugin-json-reporter",
+		"./my-local-plugin",
+		{
+			"name": "pixelguard-plugin-slack-notifier",
+			"options": {
+				"webhookUrl": "https://hooks.slack.com/..."
+			}
+		}
+	]
+}
+```
+
+### `pluginOptions`
+
+**Type:** `object`
+**Default:** `{}`
+
+Options for plugins, keyed by plugin name. Alternative to inline options.
+
+```json
+{
+	"plugins": ["pixelguard-plugin-s3-storage"],
+	"pluginOptions": {
+		"pixelguard-plugin-s3-storage": {
+			"bucket": "my-baselines",
+			"region": "us-east-1"
+		}
+	}
 }
 ```
 
