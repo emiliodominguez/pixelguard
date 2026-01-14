@@ -113,6 +113,10 @@ View report: .pixelguard/report.html
 Open the HTML report in your browser to review the differences:
 
 ```bash
+# Automatically serve the report after tests
+npx pixelguard test --serve
+
+# Or open manually
 open .pixelguard/report.html  # macOS
 xdg-open .pixelguard/report.html  # Linux
 start .pixelguard/report.html  # Windows
