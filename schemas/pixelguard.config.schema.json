@@ -1,0 +1,211 @@
+{
+	"$schema": "https://json-schema.org/draft-07/schema#",
+	"$id": "https://pixelguard.dev/schemas/pixelguard.config.schema.json",
+	"title": "Pixelguard Configuration",
+	"description": "Configuration file for Pixelguard visual regression testing",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "JSON Schema reference for IDE support"
+		},
+		"source": {
+			"type": "string",
+			"description": "Source type for automatic shot discovery",
+			"enum": ["storybook", "nextjs", "vite", "manual"],
+			"default": ""
+		},
+		"baseUrl": {
+			"type": "string",
+			"description": "Base URL for the dev server (e.g., http://localhost:6006)",
+			"format": "uri",
+			"examples": ["http://localhost:6006", "http://localhost:3000"]
+		},
+		"port": {
+			"type": "integer",
+			"description": "Port to use for dev server detection (overrides default port probing)",
+			"minimum": 1,
+			"maximum": 65535,
+			"examples": [6006, 3000, 5173]
+		},
+		"include": {
+			"type": "array",
+			"description": "Glob patterns to include when discovering shots",
+			"items": {
+				"type": "string"
+			},
+			"default": ["**/*"],
+			"examples": [["components/**/*", "pages/**/*"]]
+		},
+		"exclude": {
+			"type": "array",
+			"description": "Glob patterns to exclude when discovering shots",
+			"items": {
+				"type": "string"
+			},
+			"default": [],
+			"examples": [["**/*Deprecated*", "**/*WIP*"]]
+		},
+		"viewport": {
+			"type": "object",
+			"description": "Default viewport dimensions for screenshots",
+			"properties": {
+				"width": {
+					"type": "integer",
+					"description": "Viewport width in pixels",
+					"default": 1280,
+					"minimum": 1,
+					"examples": [1280, 1920, 375]
+				},
+				"height": {
+					"type": "integer",
+					"description": "Viewport height in pixels",
+					"default": 720,
+					"minimum": 1,
+					"examples": [720, 1080, 667]
+				}
+			},
+			"additionalProperties": false
+		},
+		"viewports": {
+			"type": "array",
+			"description": "Multiple named viewports for responsive testing (planned feature)",
+			"items": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "Unique name for this viewport (e.g., 'desktop', 'mobile')",
+						"examples": ["desktop", "tablet", "mobile"]
+					},
+					"width": {
+						"type": "integer",
+						"description": "Viewport width in pixels",
+						"minimum": 1
+					},
+					"height": {
+						"type": "integer",
+						"description": "Viewport height in pixels",
+						"minimum": 1
+					}
+				},
+				"required": ["name", "width", "height"],
+				"additionalProperties": false
+			},
+			"examples": [
+				[
+					{ "name": "desktop", "width": 1920, "height": 1080 },
+					{ "name": "tablet", "width": 768, "height": 1024 },
+					{ "name": "mobile", "width": 375, "height": 667 }
+				]
+			]
+		},
+		"threshold": {
+			"type": "number",
+			"description": "Diff threshold (0.0 to 1.0). Lower values are stricter.",
+			"default": 0.01,
+			"minimum": 0,
+			"maximum": 1,
+			"examples": [0.01, 0.05, 0.1]
+		},
+		"outputDir": {
+			"type": "string",
+			"description": "Output directory for screenshots and reports",
+			"default": ".pixelguard",
+			"examples": [".pixelguard", "screenshots", ".visual-tests"]
+		},
+		"concurrency": {
+			"type": "integer",
+			"description": "Number of concurrent screenshot captures",
+			"default": 4,
+			"minimum": 1,
+			"maximum": 32,
+			"examples": [4, 8, 1]
+		},
+		"shots": {
+			"type": "array",
+			"description": "List of shots to capture. For Storybook sources, shots are discovered automatically.",
+			"items": {
+				"$ref": "#/definitions/shot"
+			}
+		},
+		"plugins": {
+			"type": "array",
+			"description": "List of plugins to load. Can be strings or objects with options.",
+			"items": {
+				"oneOf": [
+					{
+						"type": "string",
+						"description": "Plugin package name",
+						"examples": ["pixelguard-plugin-s3", "pixelguard-plugin-slack"]
+					},
+					{
+						"type": "object",
+						"description": "Plugin with inline options",
+						"properties": {
+							"name": {
+								"type": "string",
+								"description": "Plugin package name"
+							},
+							"options": {
+								"type": "object",
+								"description": "Plugin-specific options",
+								"additionalProperties": true
+							}
+						},
+						"required": ["name"],
+						"additionalProperties": false
+					}
+				]
+			},
+			"examples": [["pixelguard-plugin-s3"], [{ "name": "pixelguard-plugin-slack", "options": { "channel": "#testing" } }]]
+		},
+		"pluginOptions": {
+			"type": "object",
+			"description": "Global plugin options keyed by plugin name",
+			"additionalProperties": {
+				"type": "object",
+				"additionalProperties": true
+			},
+			"examples": [
+				{
+					"pixelguard-plugin-s3": {
+						"bucket": "my-screenshots",
+						"region": "us-east-1"
+					}
+				}
+			]
+		}
+	},
+	"definitions": {
+		"shot": {
+			"type": "object",
+			"description": "Configuration for a single screenshot",
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "Unique name for this shot (used as filename)"
+				},
+				"path": {
+					"type": "string",
+					"description": "URL path to navigate to (appended to baseUrl)",
+					"examples": ["/", "/about", "/iframe.html?id=button--primary"]
+				},
+				"waitFor": {
+					"type": "string",
+					"description": "CSS selector to wait for before capturing",
+					"examples": ["#root", ".loaded", "[data-testid='content']"]
+				},
+				"delay": {
+					"type": "integer",
+					"description": "Delay in milliseconds after page load before capturing",
+					"minimum": 0,
+					"examples": [100, 500, 1000]
+				}
+			},
+			"required": ["name", "path"],
+			"additionalProperties": false
+		}
+	},
+	"additionalProperties": false
+}
