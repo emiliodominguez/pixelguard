@@ -10,6 +10,7 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 | [nextjs-app](./nextjs-app)         | Next.js 15           | 3000 | No             | Shows App Router integration with manual shots |
 | [vite-react](./vite-react)         | Vite 7 + React 19    | 5173 | No             | SPA with client-side routing                   |
 | [astro-site](./astro-site)         | Astro 5              | 4321 | No             | Static site generation workflow                |
+| [multi-viewport](./multi-viewport) | Vite 7 + React 19    | 5173 | No             | Multi-viewport responsive testing              |
 
 ## Example Details
 
@@ -61,6 +62,20 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 - Manual shot configuration
 
 **Best For:** Content-focused sites and documentation where visual consistency matters.
+
+### multi-viewport
+
+**Purpose:** Showcases multi-viewport testing for responsive design validation.
+
+**Key Features:**
+
+- Tests across desktop (1920x1080), tablet (768x1024), and mobile (375x667)
+- Responsive landing page with CSS breakpoints
+- Screenshots named `{shot}@{viewport}.png`
+- Uses JSON Schema for IDE autocomplete
+- Includes `pixelguard validate` command demo
+
+**Best For:** Teams who need to ensure their UI works across different screen sizes.
 
 ## Quick Start
 
@@ -129,6 +144,24 @@ Each shot requires a `name` (used for the screenshot filename) and `path` (appen
 
 - `waitFor`: CSS selector to wait for before capturing
 - `delay`: Additional milliseconds to wait after page load
+
+### Multi-Viewport (Responsive Testing)
+
+```json
+{
+	"baseUrl": "http://localhost:5173",
+	"viewports": [
+		{ "name": "desktop", "width": 1920, "height": 1080 },
+		{ "name": "tablet", "width": 768, "height": 1024 },
+		{ "name": "mobile", "width": 375, "height": 667 }
+	],
+	"shots": [
+		{ "name": "home", "path": "/" }
+	]
+}
+```
+
+Screenshots are named `{shot}@{viewport}.png` (e.g., `home@mobile.png`). See the [multi-viewport](./multi-viewport) example for a complete demo.
 
 ## Available Scripts
 
