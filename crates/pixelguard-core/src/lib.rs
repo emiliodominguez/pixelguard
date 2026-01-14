@@ -7,6 +7,7 @@
 //! - **Capture**: Take screenshots using Playwright
 //! - **Diff**: Compare images pixel-by-pixel
 //! - **Report**: Generate static HTML reports
+//! - **Plugins**: Extend functionality with npm-based plugins
 //!
 //! # Example
 //!
@@ -32,6 +33,7 @@ pub mod capture;
 pub mod config;
 pub mod detect;
 pub mod diff;
+pub mod plugins;
 pub mod report;
 
 pub use capture::capture_screenshots;

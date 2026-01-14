@@ -2,6 +2,7 @@
 //!
 //! This command captures screenshots of all configured shots,
 //! compares them against the baseline, and generates an HTML report.
+//! Supports plugins for capture, diff, report, and notification.
 
 use std::net::SocketAddr;
 use std::path::Path;
@@ -12,10 +13,17 @@ use clap::Args;
 use pixelguard_core::{
     capture::{capture_screenshots_in_dir, update_baseline},
     config::Shot,
-    diff::{diff_images, has_baseline},
-    fetch_storybook_stories, generate_report, Config,
+    diff::{diff_images, has_baseline, DiffResult},
+    fetch_storybook_stories, generate_report,
+    plugins::{
+        self, CaptureInput, CaptureOutput, CaptureShot, CaptureViewport, NotifierInput,
+        PluginCategory, PluginRegistry, ReporterChangedShot, ReporterConfig, ReporterDiffResult,
+        ReporterInput,
+    },
+    Config,
 };
 use tower_http::services::ServeDir;
+use tracing::info;
 
 /// Arguments for the test command.
 #[derive(Args)]
@@ -51,6 +59,12 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     // Load config
     let mut config = Config::load_or_default(&working_dir)?;
+
+    // Initialize plugins
+    let plugin_registry = plugins::init_plugins(&config, &working_dir)?;
+    if !plugin_registry.is_empty() && !args.ci {
+        info!("Loaded {} plugin(s)", plugin_registry.len());
+    }
 
     // Dynamically discover shots if source is storybook and no shots configured
     if config.source == "storybook" && !config.base_url.is_empty() {
@@ -102,8 +116,8 @@ pub async fn run(args: TestArgs) -> Result<()> {
         println!("Capturing {} screenshots...", shot_count);
     }
 
-    // Capture screenshots
-    let capture_result = capture_screenshots_in_dir(&config, &working_dir).await?;
+    // Capture screenshots (using plugin if available)
+    let capture_result = capture_with_plugin(&config, &working_dir, &plugin_registry).await?;
 
     if !capture_result.failed.is_empty() {
         eprintln!(
@@ -160,8 +174,11 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     let diff_result = diff_images(&config, &working_dir)?;
 
-    // Generate report
+    // Generate built-in report
     let report_path = generate_report(&config, &diff_result, &working_dir)?;
+
+    // Run additional reporter plugins
+    run_reporter_plugins(&config, &diff_result, &working_dir, &plugin_registry)?;
 
     // Output results
     if args.ci {
@@ -228,6 +245,16 @@ pub async fn run(args: TestArgs) -> Result<()> {
         }
     }
 
+    // Run notifier plugins
+    run_notifier_plugins(
+        &config,
+        &diff_result,
+        Some(&report_path),
+        args.ci,
+        &working_dir,
+        &plugin_registry,
+    )?;
+
     // Serve the report if requested
     if args.serve && !args.ci {
         let output_dir = working_dir.join(&config.output_dir);
@@ -235,6 +262,158 @@ pub async fn run(args: TestArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Captures screenshots using a plugin if available, otherwise uses built-in capture.
+async fn capture_with_plugin(
+    config: &Config,
+    working_dir: &Path,
+    registry: &PluginRegistry,
+) -> Result<pixelguard_core::capture::CaptureResult> {
+    if let Some(plugin) = registry.get(PluginCategory::Capture) {
+        info!("Using capture plugin: {}", plugin.name());
+
+        let output_dir = working_dir
+            .join(&config.output_dir)
+            .join("current")
+            .to_string_lossy()
+            .to_string();
+
+        // Create output directory
+        std::fs::create_dir_all(working_dir.join(&config.output_dir).join("current"))?;
+
+        let input = CaptureInput {
+            shots: config
+                .shots
+                .iter()
+                .map(|s| CaptureShot {
+                    name: s.name.clone(),
+                    path: s.path.clone(),
+                    wait_for: s.wait_for.clone(),
+                    delay: s.delay,
+                })
+                .collect(),
+            base_url: config.base_url.clone(),
+            viewport: CaptureViewport {
+                width: config.viewport.width,
+                height: config.viewport.height,
+            },
+            output_dir,
+            options: serde_json::json!({}),
+        };
+
+        let output: CaptureOutput =
+            plugins::executor::execute_hook(plugin, "capture", &input, working_dir)?;
+
+        Ok(pixelguard_core::capture::CaptureResult {
+            captured: output
+                .captured
+                .into_iter()
+                .map(|s| pixelguard_core::capture::CapturedShot {
+                    name: s.name,
+                    path: std::path::PathBuf::from(s.path),
+                })
+                .collect(),
+            failed: output
+                .failed
+                .into_iter()
+                .map(|s| pixelguard_core::capture::FailedShot {
+                    name: s.name,
+                    error: s.error,
+                })
+                .collect(),
+        })
+    } else {
+        // Use built-in capture
+        capture_screenshots_in_dir(config, working_dir).await
+    }
+}
+
+/// Runs all registered reporter plugins.
+fn run_reporter_plugins(
+    config: &Config,
+    diff_result: &DiffResult,
+    working_dir: &Path,
+    registry: &PluginRegistry,
+) -> Result<()> {
+    let reporters = registry.reporters();
+    if reporters.is_empty() {
+        return Ok(());
+    }
+
+    let output_dir = working_dir
+        .join(&config.output_dir)
+        .to_string_lossy()
+        .to_string();
+
+    let input = ReporterInput {
+        result: convert_diff_result(diff_result),
+        config: ReporterConfig {
+            source: config.source.clone(),
+            base_url: config.base_url.clone(),
+            threshold: config.threshold,
+        },
+        output_dir,
+        options: serde_json::json!({}),
+    };
+
+    for plugin in reporters {
+        info!("Running reporter plugin: {}", plugin.name());
+        let _output: serde_json::Value =
+            plugins::executor::execute_hook(plugin, "generate", &input, working_dir)?;
+    }
+
+    Ok(())
+}
+
+/// Runs all registered notifier plugins.
+fn run_notifier_plugins(
+    _config: &Config,
+    diff_result: &DiffResult,
+    report_path: Option<&Path>,
+    ci_mode: bool,
+    working_dir: &Path,
+    registry: &PluginRegistry,
+) -> Result<()> {
+    let notifiers = registry.notifiers();
+    if notifiers.is_empty() {
+        return Ok(());
+    }
+
+    let input = NotifierInput {
+        result: convert_diff_result(diff_result),
+        report_path: report_path.map(|p| p.to_string_lossy().to_string()),
+        report_url: None,
+        ci_mode,
+        options: serde_json::json!({}),
+    };
+
+    for plugin in notifiers {
+        info!("Running notifier plugin: {}", plugin.name());
+        plugins::executor::execute_hook_void(plugin, "notify", &input, working_dir)?;
+    }
+
+    Ok(())
+}
+
+/// Converts DiffResult to the plugin-compatible format.
+fn convert_diff_result(diff_result: &DiffResult) -> ReporterDiffResult {
+    ReporterDiffResult {
+        unchanged: diff_result.unchanged.clone(),
+        changed: diff_result
+            .changed
+            .iter()
+            .map(|c| ReporterChangedShot {
+                name: c.name.clone(),
+                baseline_path: c.baseline_path.to_string_lossy().to_string(),
+                current_path: c.current_path.to_string_lossy().to_string(),
+                diff_path: c.diff_path.to_string_lossy().to_string(),
+                diff_percentage: c.diff_percentage,
+            })
+            .collect(),
+        added: diff_result.added.clone(),
+        removed: diff_result.removed.clone(),
+    }
 }
 
 /// Serves the report directory on a local HTTP server.
