@@ -11,8 +11,9 @@ use axum::Router;
 use clap::Args;
 use pixelguard_core::{
     capture::{capture_screenshots_in_dir, update_baseline},
+    config::Shot,
     diff::{diff_images, has_baseline},
-    generate_report, Config,
+    fetch_storybook_stories, generate_report, Config,
 };
 use tower_http::services::ServeDir;
 
@@ -50,6 +51,20 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     // Load config
     let mut config = Config::load_or_default(&working_dir)?;
+
+    // Dynamically discover shots if source is storybook and no shots configured
+    if config.source == "storybook" && !config.base_url.is_empty() {
+        let discovered = discover_shots(&config).await?;
+        if discovered.is_empty() {
+            anyhow::bail!(
+                "Could not discover any stories from Storybook at {}. \
+                 Make sure Storybook is running.",
+                config.base_url
+            );
+        }
+        // Merge with any overrides from config
+        config.shots = merge_shots(discovered, &config.shots);
+    }
 
     if config.shots.is_empty() {
         anyhow::bail!(
@@ -241,4 +256,85 @@ async fn serve_report(output_dir: &Path, port: u16) -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Discovers shots dynamically from the source (e.g., Storybook).
+async fn discover_shots(config: &Config) -> Result<Vec<Shot>> {
+    match config.source.as_str() {
+        "storybook" => {
+            let stories = fetch_storybook_stories(&config.base_url)
+                .await
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Failed to fetch stories from Storybook at {}. Is it running?",
+                        config.base_url
+                    )
+                })?;
+
+            // Apply include/exclude filters
+            let filtered: Vec<Shot> = stories
+                .into_iter()
+                .filter(|shot| matches_patterns(&shot.name, &config.include, &config.exclude))
+                .collect();
+
+            Ok(filtered)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+/// Checks if a name matches include patterns and doesn't match exclude patterns.
+fn matches_patterns(name: &str, include: &[String], exclude: &[String]) -> bool {
+    // Check exclude first
+    for pattern in exclude {
+        if glob_match(pattern, name) {
+            return false;
+        }
+    }
+
+    // Then check include
+    for pattern in include {
+        if glob_match(pattern, name) {
+            return true;
+        }
+    }
+
+    // If no include patterns, include everything
+    include.is_empty()
+}
+
+/// Simple glob matching (supports * and **).
+fn glob_match(pattern: &str, name: &str) -> bool {
+    if pattern == "**/*" || pattern == "*" {
+        return true;
+    }
+
+    // Convert glob to regex-like matching
+    let pattern = pattern.replace("**", ".*").replace('*', "[^/]*");
+    regex::Regex::new(&format!("^{}$", pattern))
+        .map(|re| re.is_match(name))
+        .unwrap_or(false)
+}
+
+/// Merges discovered shots with config overrides.
+///
+/// Config shots can provide custom waitFor, delay, or completely override a shot.
+fn merge_shots(discovered: Vec<Shot>, overrides: &[Shot]) -> Vec<Shot> {
+    discovered
+        .into_iter()
+        .map(|mut shot| {
+            // Check if there's an override for this shot
+            if let Some(override_shot) = overrides.iter().find(|o| o.name == shot.name) {
+                // Apply overrides
+                if override_shot.wait_for.is_some() {
+                    shot.wait_for = override_shot.wait_for.clone();
+                }
+                if override_shot.delay.is_some() {
+                    shot.delay = override_shot.delay;
+                }
+                // Path override is intentionally not applied - use discovered path
+            }
+            shot
+        })
+        .collect()
 }
