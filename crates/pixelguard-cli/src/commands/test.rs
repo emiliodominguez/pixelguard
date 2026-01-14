@@ -62,11 +62,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
     // Load config from custom path or default
-    let mut config = if let Some(config_path) = &args.config {
-        Config::load(working_dir.join(config_path))?
-    } else {
-        Config::load_or_default(&working_dir)?
-    };
+    let mut config = super::load_config(&working_dir, args.config.as_deref())?;
 
     // Initialize plugins
     let plugin_registry = plugins::init_plugins(&config, &working_dir)?;
@@ -191,11 +187,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
     // Output results
     if args.ci {
         let result = serde_json::json!({
-            "status": if diff_result.changed.is_empty() && diff_result.added.is_empty() && diff_result.removed.is_empty() {
-                "pass"
-            } else {
-                "fail"
-            },
+            "status": if diff_result.has_changes() { "fail" } else { "pass" },
             "unchanged": diff_result.unchanged.len(),
             "changed": diff_result.changed.len(),
             "added": diff_result.added.len(),
@@ -205,10 +197,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
         println!("{}", serde_json::to_string(&result)?);
 
         // Exit with code 1 if there are diffs
-        if !diff_result.changed.is_empty()
-            || !diff_result.added.is_empty()
-            || !diff_result.removed.is_empty()
-        {
+        if diff_result.has_changes() {
             std::process::exit(1);
         }
     } else {
@@ -245,17 +234,13 @@ pub async fn run(args: TestArgs) -> Result<()> {
             println!("\nView report: {}", report_path.display());
         }
 
-        if !diff_result.changed.is_empty()
-            || !diff_result.added.is_empty()
-            || !diff_result.removed.is_empty()
-        {
+        if diff_result.has_changes() {
             println!("\nTo update baseline: pixelguard test --update");
         }
     }
 
     // Run notifier plugins
     run_notifier_plugins(
-        &config,
         &diff_result,
         Some(&report_path),
         args.ci,
@@ -376,7 +361,6 @@ fn run_reporter_plugins(
 
 /// Runs all registered notifier plugins.
 fn run_notifier_plugins(
-    _config: &Config,
     diff_result: &DiffResult,
     report_path: Option<&Path>,
     ci_mode: bool,

@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use clap::Args;
-use pixelguard_core::{plugins, Config};
+use pixelguard_core::plugins;
 
 /// Arguments for the plugins command.
 #[derive(Args)]
@@ -23,11 +23,7 @@ pub async fn run(args: PluginsArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
     // Load config from custom path or default
-    let config = if let Some(config_path) = &args.config {
-        Config::load(working_dir.join(config_path))?
-    } else {
-        Config::load_or_default(&working_dir)?
-    };
+    let config = super::load_config(&working_dir, args.config.as_deref())?;
 
     if config.plugins.is_empty() {
         if args.json {
@@ -46,16 +42,16 @@ pub async fn run(args: PluginsArgs) -> Result<()> {
     let registry = plugins::init_plugins(&config, &working_dir);
 
     if args.json {
-        output_json(&config, &registry)?;
+        output_json(&registry)?;
     } else {
-        output_table(&config, &registry)?;
+        output_table(&registry)?;
     }
 
     Ok(())
 }
 
 /// Outputs plugin information as JSON.
-fn output_json(_config: &Config, registry: &Result<plugins::PluginRegistry>) -> Result<()> {
+fn output_json(registry: &Result<plugins::PluginRegistry>) -> Result<()> {
     match registry {
         Ok(reg) => {
             let plugins_info: Vec<serde_json::Value> = reg
@@ -88,7 +84,7 @@ fn output_json(_config: &Config, registry: &Result<plugins::PluginRegistry>) -> 
 }
 
 /// Outputs plugin information as a formatted table.
-fn output_table(_config: &Config, registry: &Result<plugins::PluginRegistry>) -> Result<()> {
+fn output_table(registry: &Result<plugins::PluginRegistry>) -> Result<()> {
     match registry {
         Ok(reg) => {
             let all_plugins = reg.all_active();

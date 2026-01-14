@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use clap::Args;
-use pixelguard_core::Config;
 
 /// Arguments for the list command.
 #[derive(Args)]
@@ -24,11 +23,7 @@ pub async fn run(args: ListArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
     // Load config from custom path or default
-    let config = if let Some(config_path) = &args.config {
-        Config::load(working_dir.join(config_path))?
-    } else {
-        Config::load_or_default(&working_dir)?
-    };
+    let config = super::load_config(&working_dir, args.config.as_deref())?;
 
     if config.shots.is_empty() {
         if args.json {
