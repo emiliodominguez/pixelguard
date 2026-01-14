@@ -10,6 +10,10 @@ use pixelguard_core::Config;
 /// Arguments for the list command.
 #[derive(Args)]
 pub struct ListArgs {
+    /// Path to config file (default: pixelguard.config.json)
+    #[arg(long, short)]
+    config: Option<String>,
+
     /// Output in JSON format
     #[arg(long)]
     json: bool,
@@ -19,8 +23,12 @@ pub struct ListArgs {
 pub async fn run(args: ListArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
-    // Load config
-    let config = Config::load_or_default(&working_dir)?;
+    // Load config from custom path or default
+    let config = if let Some(config_path) = &args.config {
+        Config::load(working_dir.join(config_path))?
+    } else {
+        Config::load_or_default(&working_dir)?
+    };
 
     if config.shots.is_empty() {
         if args.json {
