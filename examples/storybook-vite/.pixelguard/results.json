@@ -1,0 +1,115 @@
+{
+	"timestamp": "2026-01-14T16:07:15.916Z",
+	"summary": {
+		"total": 37,
+		"unchanged": 28,
+		"changed": 9,
+		"added": 0,
+		"removed": 0,
+		"passed": false
+	},
+	"config": {
+		"source": "storybook",
+		"baseUrl": "http://localhost:6006",
+		"threshold": 0.01
+	},
+	"results": {
+		"unchanged": [
+			"components-alert--all-variants",
+			"components-alert--dismissible",
+			"components-alert--error",
+			"components-alert--info",
+			"components-alert--success",
+			"components-alert--warning",
+			"components-alert--without-title",
+			"components-badge--all-variants",
+			"components-badge--danger",
+			"components-badge--default",
+			"components-badge--large",
+			"components-badge--primary",
+			"components-badge--small",
+			"components-badge--status-badges",
+			"components-badge--success",
+			"components-badge--warning",
+			"components-button--danger",
+			"components-button--secondary",
+			"components-card--default",
+			"components-card--elevated",
+			"components-card--outlined",
+			"components-card--with-image",
+			"components-input--default",
+			"components-input--disabled",
+			"components-input--form-example",
+			"components-input--password",
+			"components-input--with-error",
+			"components-input--with-label"
+		],
+		"changed": [
+			{
+				"name": "components-button--all-sizes",
+				"diffPercentage": 0.9580078125,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--all-sizes.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--all-sizes.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--all-sizes.png"
+			},
+			{
+				"name": "components-button--all-variants",
+				"diffPercentage": 0.46799045138888895,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--all-variants.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--all-variants.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--all-variants.png"
+			},
+			{
+				"name": "components-button--disabled",
+				"diffPercentage": 0.5221354166666666,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--disabled.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--disabled.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--disabled.png"
+			},
+			{
+				"name": "components-button--large",
+				"diffPercentage": 0.7172309027777778,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--large.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--large.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--large.png"
+			},
+			{
+				"name": "components-button--outline",
+				"diffPercentage": 0.1345486111111111,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--outline.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--outline.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--outline.png"
+			},
+			{
+				"name": "components-button--primary",
+				"diffPercentage": 0.49902343750000006,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--primary.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--primary.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--primary.png"
+			},
+			{
+				"name": "components-button--small",
+				"diffPercentage": 0.24913194444444445,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-button--small.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-button--small.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-button--small.png"
+			},
+			{
+				"name": "components-card--full-featured",
+				"diffPercentage": 0.23155381944444442,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-card--full-featured.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-card--full-featured.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-card--full-featured.png"
+			},
+			{
+				"name": "components-card--with-footer",
+				"diffPercentage": 0.33203125,
+				"baselinePath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/baseline/components-card--with-footer.png",
+				"currentPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/current/components-card--with-footer.png",
+				"diffPath": "/Users/emilio.dominguez/Desktop/pixelguard/examples/storybook-react/.pixelguard/diff/components-card--with-footer.png"
+			}
+		],
+		"added": [],
+		"removed": []
+	}
+}

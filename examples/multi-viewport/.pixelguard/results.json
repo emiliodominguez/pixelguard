@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-01-14T20:23:33.093541+00:00",
+  "summary": {
+    "total": 9,
+    "unchanged": 6,
+    "changed": 3,
+    "added": 0,
+    "removed": 0,
+    "passed": false
+  },
+  "results": {
+    "changed": [
+      {
+        "name": "features@desktop",
+        "diffPercentage": 0.2598861882716049,
+        "viewport": "desktop",
+        "baselinePath": "baseline/features@desktop.png",
+        "currentPath": "current/features@desktop.png",
+        "diffPath": "diff/features@desktop.png"
+      },
+      {
+        "name": "features@mobile",
+        "diffPercentage": 1.3549225387306347,
+        "viewport": "mobile",
+        "baselinePath": "baseline/features@mobile.png",
+        "currentPath": "current/features@mobile.png",
+        "diffPath": "diff/features@mobile.png"
+      },
+      {
+        "name": "features@tablet",
+        "diffPercentage": 0.6827036539713542,
+        "viewport": "tablet",
+        "baselinePath": "baseline/features@tablet.png",
+        "currentPath": "current/features@tablet.png",
+        "diffPath": "diff/features@tablet.png"
+      }
+    ],
+    "added": [],
+    "removed": [],
+    "unchanged": [
+      "home@desktop",
+      "home@mobile",
+      "home@tablet",
+      "pricing@desktop",
+      "pricing@mobile",
+      "pricing@tablet"
+    ]
+  }
+}
