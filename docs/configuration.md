@@ -2,6 +2,36 @@
 
 Pixelguard uses a `pixelguard.config.json` file in your project root. All fields are optional with sensible defaults.
 
+## JSON Schema (IDE Support)
+
+For autocomplete and validation in your IDE, add the `$schema` field to your config:
+
+```json
+{
+	"$schema": "https://raw.githubusercontent.com/emiliodominguez/pixelguard/main/schemas/pixelguard.config.schema.json",
+	"source": "storybook",
+	"baseUrl": "http://localhost:6006"
+}
+```
+
+This provides:
+- Autocomplete for all configuration options
+- Inline documentation on hover
+- Validation errors for invalid values
+
+For VS Code users, you can also configure the schema globally in your settings:
+
+```json
+{
+	"json.schemas": [
+		{
+			"fileMatch": ["pixelguard.config.json"],
+			"url": "https://raw.githubusercontent.com/emiliodominguez/pixelguard/main/schemas/pixelguard.config.schema.json"
+		}
+	]
+}
+```
+
 ## Full Example
 
 ```json
@@ -211,22 +241,39 @@ PIXELGUARD_CONFIG=pixelguard.ci.json npx pixelguard test --ci
 
 ## Multiple Viewports
 
-To test multiple viewport sizes, create separate configs or use the `--filter` flag:
+Test the same shots across different screen sizes with the `viewports` array:
 
 ```json
 {
-	"shots": [
-		{
-			"name": "button--primary--desktop",
-			"path": "/iframe.html?id=button--primary"
-		},
-		{
-			"name": "button--primary--mobile",
-			"path": "/iframe.html?id=button--primary&viewport=mobile"
-		}
+	"viewports": [
+		{ "name": "desktop", "width": 1920, "height": 1080 },
+		{ "name": "tablet", "width": 768, "height": 1024 },
+		{ "name": "mobile", "width": 375, "height": 667 }
 	]
 }
 ```
+
+When `viewports` is set, each shot is captured at each viewport size. Screenshots are named `{shot}@{viewport}.png`:
+
+- `button--primary@desktop.png`
+- `button--primary@tablet.png`
+- `button--primary@mobile.png`
+
+This is more efficient than manually duplicating shots.
+
+### Backwards Compatibility
+
+If `viewports` is empty or not set, the single `viewport` field is used with the name "default", and screenshots are named without a suffix (`button--primary.png`).
+
+### viewports
+
+**Type:** `{ name: string, width: number, height: number }[]`
+**Default:** `[]`
+
+Each viewport must have:
+- `name` - Unique identifier (e.g., "mobile", "tablet", "desktop")
+- `width` - Viewport width in pixels
+- `height` - Viewport height in pixels
 
 ## Plugins
 
