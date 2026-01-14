@@ -42,7 +42,8 @@ pixelguard/
 │   │           ├── mod.rs
 │   │           ├── init.rs
 │   │           ├── test.rs
-│   │           └── list.rs
+│   │           ├── list.rs
+│   │           └── plugins.rs
 │   └── pixelguard-core/              # Core library
 │       ├── Cargo.toml
 │       └── src/
@@ -51,21 +52,35 @@ pixelguard/
 │           ├── detect.rs
 │           ├── capture.rs
 │           ├── diff.rs
-│           └── report.rs
+│           ├── report.rs
+│           ├── storage.rs
+│           └── plugins/
+│               ├── mod.rs
+│               ├── types.rs
+│               ├── discovery.rs
+│               ├── loader.rs
+│               ├── executor.rs
+│               └── registry.rs
 ├── npm/
-│   └── pixelguard/                   # npm wrapper package
+│   ├── pixelguard/                   # npm wrapper package
+│   │   ├── package.json
+│   │   ├── README.md
+│   │   └── scripts/
+│   │       ├── postinstall.js        # Downloads correct binary
+│   │       └── run.js                # Executes binary
+│   └── plugin-types/                 # TypeScript types for plugin authors
 │       ├── package.json
-│       ├── README.md
-│       └── scripts/
-│           ├── postinstall.js        # Downloads correct binary
-│           └── run.js                # Executes binary
+│       └── src/
+│           └── index.ts
 ├── docs/
 │   ├── getting-started.md
 │   ├── configuration.md
+│   ├── plugins.md
 │   ├── ci-setup.md
 │   └── troubleshooting.md
 ├── examples/
-│   └── storybook-react/              # Example project for testing
+│   ├── storybook-react/              # Example project for testing
+│   └── plugins/                      # Example plugins for all categories
 ├── Cargo.toml                        # Workspace root
 ├── README.md
 ├── CONTRIBUTING.md
@@ -119,6 +134,7 @@ View report: .pixelguard/report.html
 - `--update` — Update baseline with current screenshots
 - `--ci` — CI mode (machine-readable output, exit code 1 on diffs)
 - `--filter <pattern>` — Only test shots matching pattern
+- `--config, -c <path>` — Use a custom config file
 - `--verbose` — Show detailed progress
 - `--serve` — Serve the HTML report after completion
 - `--port <number>` — Port for serving the report (default: 3333)
@@ -140,6 +156,29 @@ Configured shots (47):
   ...
 ```
 
+**Flags:**
+- `--config, -c <path>` — Use a custom config file
+- `--json` — Output as JSON
+
+---
+
+### `pixelguard plugins`
+
+List and validate installed plugins.
+
+```bash
+$ npx pixelguard plugins
+
+Loaded plugins (2):
+
+  ✓ JSON Reporter   Reporter  [generate]
+  ✓ Slack Notifier  Notifier  [notify]
+```
+
+**Flags:**
+- `--config, -c <path>` — Use a custom config file
+- `--json` — Output as JSON
+
 ---
 
 ## Configuration Schema
@@ -155,7 +194,14 @@ Configured shots (47):
     "height": 720
   },
   "threshold": 0.01,
-  "outputDir": ".pixelguard"
+  "outputDir": ".pixelguard",
+  "concurrency": 4,
+  "plugins": ["pixelguard-plugin-slack-notifier"],
+  "pluginOptions": {
+    "pixelguard-plugin-slack-notifier": {
+      "webhookUrl": "https://hooks.slack.com/..."
+    }
+  }
 }
 ```
 
@@ -173,6 +219,16 @@ Optional shot overrides can be specified for custom delays or wait selectors:
   ]
 }
 ```
+
+### Plugin Categories
+
+| Category | Purpose | Stacking |
+|----------|---------|----------|
+| **storage** | Where baselines are stored (S3, R2) | Single (last wins) |
+| **capture** | Screenshot engine (Playwright, Puppeteer) | Single (last wins) |
+| **differ** | Image comparison (pixel, SSIM) | Single (last wins) |
+| **reporter** | Report formats (HTML, JSON, JUnit) | Multiple (all run) |
+| **notifier** | Notifications (Slack, Teams) | Multiple (all run) |
 
 ---
 
@@ -192,13 +248,32 @@ Detect project type by checking:
 Generate a temporary Node.js script that uses Playwright to:
 
 1. Launch headless Chromium
-2. Navigate to each shot URL
+2. Navigate to each shot URL (in parallel batches based on `concurrency`)
 3. Wait for selector (if specified)
 4. Wait for delay (if specified)
 5. Take screenshot
 6. Save to output directory
 
-Playwright must be installed in the user's project or globally.
+Playwright must be installed in the user's project or globally. Screenshots are captured in parallel batches for performance.
+
+### `storage.rs`
+
+Abstraction layer for baseline storage:
+
+1. Local filesystem (default) — reads/writes to `.pixelguard/`
+2. Plugin-based — delegates to storage plugins (S3, R2, Azure)
+
+Provides unified API: `read`, `write`, `exists`, `list`, `delete`, `copy`
+
+### `plugins/`
+
+Plugin system for extending functionality:
+
+1. **discovery.rs** — Find plugins in node_modules or local paths
+2. **loader.rs** — Load and validate plugin manifests from package.json
+3. **executor.rs** — Execute plugins via Node.js subprocess with JSON IPC
+4. **registry.rs** — Store and lookup plugins by category
+5. **types.rs** — Plugin categories, manifests, input/output types
 
 ### `diff.rs`
 
@@ -368,7 +443,9 @@ And functionally:
 - `npx pixelguard test` captures screenshots, compares, generates report
 - `npx pixelguard test --update` updates baseline
 - `npx pixelguard list` shows configured shots
+- `npx pixelguard plugins` lists installed plugins
 - HTML report opens in browser and displays diffs correctly
+- Plugins are loaded and executed correctly
 
 ---
 

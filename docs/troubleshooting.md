@@ -162,13 +162,17 @@ This happens when image dimensions don't match. Ensure consistent viewport:
 
 ### Screenshots are slow
 
-1. **Reduce delays**: Only use delays where necessary
-2. **Parallelize**: Run tests in parallel in CI
+1. **Increase concurrency**: Capture more screenshots in parallel
+   ```json
+   {
+     "concurrency": 8
+   }
+   ```
+2. **Reduce delays**: Only use delays where necessary
 3. **Filter shots**: Use `--filter` to test specific shots
-
-```bash
-npx pixelguard test --filter "button"
-```
+   ```bash
+   npx pixelguard test --filter "button"
+   ```
 
 ### Too many screenshots
 

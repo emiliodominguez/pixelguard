@@ -286,6 +286,32 @@ for (const result of results) {
 }
 ```
 
+## Listing Installed Plugins
+
+Use the `plugins` command to see all loaded plugins:
+
+```bash
+npx pixelguard plugins
+```
+
+Output:
+```
+Loaded plugins (2):
+
+  ✓ JSON Reporter   Reporter  [generate]
+  ✓ Slack Notifier  Notifier  [notify]
+
+Stackable plugins:
+  Reporter: JSON Reporter
+  Notifier: Slack Notifier
+```
+
+Use `--json` for machine-readable output:
+
+```bash
+npx pixelguard plugins --json
+```
+
 ## Troubleshooting
 
 ### Plugin not loading
@@ -293,6 +319,7 @@ for (const result of results) {
 1. Check the plugin is installed: `npm ls pixelguard-plugin-*`
 2. Verify the `pixelguard` field in package.json
 3. Check the entry file exists at the specified path
+4. Run `npx pixelguard plugins` to see which plugins loaded
 
 ### Plugin errors
 
