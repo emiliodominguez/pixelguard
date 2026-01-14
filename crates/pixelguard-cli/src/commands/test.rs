@@ -28,6 +28,10 @@ use tracing::info;
 /// Arguments for the test command.
 #[derive(Args)]
 pub struct TestArgs {
+    /// Path to config file (default: pixelguard.config.json)
+    #[arg(long, short)]
+    config: Option<String>,
+
     /// Update baseline with current screenshots
     #[arg(long)]
     update: bool,
@@ -57,8 +61,12 @@ pub struct TestArgs {
 pub async fn run(args: TestArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
-    // Load config
-    let mut config = Config::load_or_default(&working_dir)?;
+    // Load config from custom path or default
+    let mut config = if let Some(config_path) = &args.config {
+        Config::load(working_dir.join(config_path))?
+    } else {
+        Config::load_or_default(&working_dir)?
+    };
 
     // Initialize plugins
     let plugin_registry = plugins::init_plugins(&config, &working_dir)?;
