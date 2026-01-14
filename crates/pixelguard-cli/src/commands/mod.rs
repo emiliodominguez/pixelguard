@@ -6,15 +6,19 @@
 //! - `list`: List configured shots
 //! - `plugins`: List and validate installed plugins
 //! - `validate`: Check environment prerequisites
+//! - `apply`: Apply decisions from exported JSON file
+//! - `review`: Interactively review visual diffs
 
 use std::path::Path;
 
 use anyhow::Result;
 use pixelguard_core::Config;
 
+pub mod apply;
 pub mod init;
 pub mod list;
 pub mod plugins;
+pub mod review;
 pub mod test;
 pub mod validate;
 

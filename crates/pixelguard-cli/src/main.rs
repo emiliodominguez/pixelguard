@@ -42,6 +42,12 @@ enum Commands {
 
     /// Validate environment prerequisites (Node.js, Playwright, etc.)
     Validate(commands::validate::ValidateArgs),
+
+    /// Apply decisions from exported JSON file to update baseline
+    Apply(commands::apply::ApplyArgs),
+
+    /// Interactively review visual diffs and update baseline
+    Review(commands::review::ReviewArgs),
 }
 
 #[tokio::main]
@@ -67,5 +73,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::List(args) => commands::list::run(args).await,
         Commands::Plugins(args) => commands::plugins::run(args).await,
         Commands::Validate(args) => commands::validate::run(args).await,
+        Commands::Apply(args) => commands::apply::run(args).await,
+        Commands::Review(args) => commands::review::run(args).await,
     }
 }

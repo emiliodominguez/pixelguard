@@ -37,6 +37,10 @@ pub struct TestArgs {
     #[arg(long)]
     update: bool,
 
+    /// Update only specific shots (comma-separated names, implies --update)
+    #[arg(long, value_delimiter = ',')]
+    update_only: Option<Vec<String>>,
+
     /// CI mode: machine-readable output, exit code 1 on diffs
     #[arg(long)]
     ci: bool,
@@ -140,19 +144,25 @@ pub async fn run(args: TestArgs) -> Result<()> {
         }
     }
 
-    // Handle --update flag
-    if args.update {
-        update_baseline(&config, &working_dir, Some(&plugin_registry))?;
+    // Handle --update or --update-only flag
+    let should_update = args.update || args.update_only.is_some();
+
+    if should_update {
+        let filter = args.update_only.as_deref();
+        let updated_count = update_baseline(&config, &working_dir, Some(&plugin_registry), filter)?;
 
         if args.ci {
+            println!("{{\"status\":\"updated\",\"count\":{}}}", updated_count);
+        } else if let Some(names) = &args.update_only {
             println!(
-                "{{\"status\":\"updated\",\"count\":{}}}",
-                capture_result.captured.len()
+                "\n\u{2713} Updated {} baseline(s): {}",
+                updated_count,
+                names.join(", ")
             );
         } else {
             println!(
                 "\n\u{2713} Updated baseline with {} screenshots",
-                capture_result.captured.len()
+                updated_count
             );
         }
 
