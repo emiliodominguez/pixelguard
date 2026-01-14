@@ -1,7 +1,8 @@
 //! Image diffing algorithm for visual regression testing.
 //!
 //! This module provides pixel-by-pixel comparison of images with anti-aliasing
-//! tolerance and generates visual diff images.
+//! tolerance and generates visual diff images. Supports custom differ plugins
+//! for alternative algorithms like SSIM.
 
 use std::path::{Path, PathBuf};
 
@@ -10,6 +11,9 @@ use image::{ImageBuffer, Rgba, RgbaImage};
 use tracing::{debug, info};
 
 use crate::config::Config;
+use crate::plugins::{
+    executor, DifferInput, DifferOutput, LoadedPlugin, PluginCategory, PluginRegistry,
+};
 
 /// Result of comparing images.
 #[derive(Debug, Clone)]
@@ -54,14 +58,18 @@ pub struct ChangedShot {
 ///
 /// fn example() -> anyhow::Result<()> {
 ///     let config = Config::load("pixelguard.config.json")?;
-///     let result = diff_images(&config, ".")?;
+///     let result = diff_images(&config, ".", None)?;
 ///
 ///     println!("Unchanged: {}", result.unchanged.len());
 ///     println!("Changed: {}", result.changed.len());
 ///     Ok(())
 /// }
 /// ```
-pub fn diff_images<P: AsRef<Path>>(config: &Config, working_dir: P) -> Result<DiffResult> {
+pub fn diff_images<P: AsRef<Path>>(
+    config: &Config,
+    working_dir: P,
+    plugin_registry: Option<&PluginRegistry>,
+) -> Result<DiffResult> {
     let working_dir = working_dir.as_ref();
     let baseline_dir = working_dir.join(&config.output_dir).join("baseline");
     let current_dir = working_dir.join(&config.output_dir).join("current");
@@ -119,6 +127,9 @@ pub fn diff_images<P: AsRef<Path>>(config: &Config, working_dir: P) -> Result<Di
         }
     }
 
+    // Get differ plugin if available
+    let differ_plugin = plugin_registry.and_then(|r| r.get_override(PluginCategory::Differ));
+
     // Compare shots that exist in both
     for name in current_shots.intersection(&baseline_shots) {
         let baseline_path = baseline_dir.join(format!("{}.png", name));
@@ -127,8 +138,20 @@ pub fn diff_images<P: AsRef<Path>>(config: &Config, working_dir: P) -> Result<Di
 
         debug!("Comparing: {}", name);
 
-        let diff_percentage =
-            compare_images(&baseline_path, &current_path, &diff_path, config.threshold)?;
+        let diff_percentage = if let Some(plugin) = differ_plugin {
+            // Use plugin for comparison
+            compare_with_plugin(
+                plugin,
+                &baseline_path,
+                &current_path,
+                &diff_path,
+                config.threshold,
+                working_dir,
+            )?
+        } else {
+            // Use built-in comparison
+            compare_images(&baseline_path, &current_path, &diff_path, config.threshold)?
+        };
 
         if diff_percentage > config.threshold {
             info!("{}: {:.2}% different", name, diff_percentage);
@@ -162,6 +185,30 @@ pub fn diff_images<P: AsRef<Path>>(config: &Config, working_dir: P) -> Result<Di
     );
 
     Ok(result)
+}
+
+/// Compares two images using a differ plugin.
+///
+/// Executes the plugin's `compare` hook and returns the diff percentage.
+fn compare_with_plugin(
+    plugin: &LoadedPlugin,
+    baseline_path: &Path,
+    current_path: &Path,
+    diff_path: &Path,
+    threshold: f64,
+    working_dir: &Path,
+) -> Result<f64> {
+    let input = DifferInput {
+        baseline_path: baseline_path.to_string_lossy().to_string(),
+        current_path: current_path.to_string_lossy().to_string(),
+        diff_path: diff_path.to_string_lossy().to_string(),
+        threshold,
+        options: serde_json::Value::Null,
+    };
+
+    let output: DifferOutput = executor::execute_hook(plugin, "compare", &input, working_dir)?;
+
+    Ok(output.diff_percentage)
 }
 
 /// Compares two images and generates a diff image.

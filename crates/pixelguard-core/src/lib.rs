@@ -22,7 +22,7 @@
 //!     let _screenshots = capture_screenshots(&config).await?;
 //!
 //!     // Compare against baseline (uses current working directory)
-//!     let results = diff_images(&config, ".")?;
+//!     let results = diff_images(&config, ".", None)?;
 //!
 //!     println!("Changed: {}", results.changed.len());
 //!     Ok(())
