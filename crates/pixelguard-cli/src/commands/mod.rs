@@ -8,6 +8,7 @@
 //! - `validate`: Check environment prerequisites
 //! - `apply`: Apply decisions from exported JSON file
 //! - `review`: Interactively review visual diffs
+//! - `serve`: Serve an existing report with decisions API
 
 use std::path::Path;
 
@@ -19,6 +20,7 @@ pub mod init;
 pub mod list;
 pub mod plugins;
 pub mod review;
+pub mod serve;
 pub mod test;
 pub mod validate;
 

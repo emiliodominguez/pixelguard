@@ -150,14 +150,17 @@ Options:
 
 ### `pixelguard apply`
 
-Apply decisions from an exported JSON file to update the baseline.
+Apply decisions from the HTML report to update the baseline.
 
 ```bash
-# Apply decisions exported from the HTML report
-npx pixelguard apply pixelguard-decisions.json
+# Apply saved decisions (reads from .pixelguard/decisions.json)
+npx pixelguard apply
 
 # Preview what would be updated
-npx pixelguard apply pixelguard-decisions.json --dry-run
+npx pixelguard apply --dry-run
+
+# Apply from a specific file
+npx pixelguard apply path/to/decisions.json
 ```
 
 Options:
@@ -185,6 +188,24 @@ Options:
 - `--config, -c <path>` — Use a custom config file
 - `--results <path>` — Path to results.json
 - `--open-diff` — Open diff images during review
+
+### `pixelguard serve`
+
+Serve an existing report for browser-based review without re-running tests.
+
+```bash
+npx pixelguard serve
+
+# Output:
+# Serving report at: http://localhost:3333/report.html
+# Press Ctrl+C to stop the server
+```
+
+Options:
+- `--config, -c <path>` — Use a custom config file
+- `--port <number>` — Port for serving the report (default: 3333)
+
+When using `serve`, decisions are automatically saved to `.pixelguard/decisions.json` as you approve/reject changes in the browser.
 
 ## Configuration
 
@@ -311,14 +332,14 @@ jobs:
 
 Pixelguard offers multiple ways to review and approve visual changes:
 
-### Browser-Based Review
+### Browser-Based Review (Recommended)
 
-1. Run tests: `npx pixelguard test --serve`
-2. Open the HTML report in your browser
-3. Use **Filter & Search** to find specific shots
-4. Click **Approve** or **Reject** on each changed shot
-5. Click **Export** to download `pixelguard-decisions.json`
-6. Apply decisions: `npx pixelguard apply pixelguard-decisions.json`
+1. Run tests: `npx pixelguard test`
+2. Serve the report: `npx pixelguard serve`
+3. Click **Approve** or **Reject** on each changed shot (auto-saves)
+4. Apply decisions: `npx pixelguard apply`
+
+Decisions are automatically saved to `.pixelguard/decisions.json` when using `serve`.
 
 ### Interactive CLI Review
 
