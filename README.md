@@ -104,20 +104,12 @@ Pixelguard uses `pixelguard.config.json` in your project root:
     "width": 1280,
     "height": 720
   },
-  "threshold": 0.1,
-  "outputDir": ".pixelguard",
-  "shots": [
-    {
-      "name": "button--primary",
-      "path": "/iframe.html?id=button--primary",
-      "waitFor": "#storybook-root",
-      "delay": 100
-    }
-  ]
+  "threshold": 0.01,
+  "outputDir": ".pixelguard"
 }
 ```
 
-All fields are optional with sensible defaults.
+All fields are optional with sensible defaults. **Stories are discovered dynamically** from Storybook at test time.
 
 ### Configuration Reference
 
@@ -129,18 +121,30 @@ All fields are optional with sensible defaults.
 | `exclude` | string[] | `[]` | Glob patterns for shots to exclude |
 | `viewport.width` | number | `1280` | Viewport width in pixels |
 | `viewport.height` | number | `720` | Viewport height in pixels |
-| `threshold` | number | `0.1` | Diff threshold (0.0 to 1.0) |
+| `threshold` | number | `0.01` | Diff threshold (0.0 to 100.0, percentage) |
 | `outputDir` | string | `.pixelguard` | Directory for screenshots and reports |
-| `shots` | Shot[] | `[]` | Array of shot configurations |
+| `shots` | Shot[] | `[]` | Optional overrides for specific shots |
 
-### Shot Configuration
+### Shot Overrides
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Unique identifier for the shot |
-| `path` | string | Yes | URL path (appended to baseUrl) |
-| `waitFor` | string | No | CSS selector to wait for before capture |
-| `delay` | number | No | Delay in ms after page load |
+For Storybook projects, shots are discovered automatically. You can optionally provide overrides for specific shots that need custom configuration:
+
+```json
+{
+  "shots": [
+    {
+      "name": "components-card--with-image",
+      "delay": 500
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Shot name to override (must match discovered name) |
+| `waitFor` | string | CSS selector to wait for before capture |
+| `delay` | number | Delay in ms after page load |
 
 ## CI Integration
 
