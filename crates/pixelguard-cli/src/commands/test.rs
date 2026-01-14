@@ -139,7 +139,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     // Handle --update flag
     if args.update {
-        update_baseline(&config, &working_dir)?;
+        update_baseline(&config, &working_dir, Some(&plugin_registry))?;
 
         if args.ci {
             println!(
