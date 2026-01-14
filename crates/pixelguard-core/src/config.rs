@@ -81,7 +81,7 @@ fn default_include() -> Vec<String> {
 }
 
 fn default_threshold() -> f64 {
-    0.1
+    0.01
 }
 
 fn default_output_dir() -> String {
@@ -213,7 +213,7 @@ mod tests {
 
         assert_eq!(config.viewport.width, 1280);
         assert_eq!(config.viewport.height, 720);
-        assert_eq!(config.threshold, 0.1);
+        assert_eq!(config.threshold, 0.01);
         assert_eq!(config.output_dir, ".pixelguard");
         assert_eq!(config.include, vec!["**/*"]);
     }
@@ -253,7 +253,7 @@ mod tests {
 
         assert_eq!(config.source, "storybook");
         assert_eq!(config.viewport.width, 1280);
-        assert_eq!(config.threshold, 0.1);
+        assert_eq!(config.threshold, 0.01);
     }
 
     #[test]
