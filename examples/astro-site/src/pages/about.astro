@@ -1,0 +1,83 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const features = [
+	"Zero configuration required",
+	"Git-friendly screenshot storage",
+	"Beautiful HTML reports",
+	"CI/CD integration ready",
+];
+---
+
+<Layout title="About - Pixelguard">
+	<main>
+		<h1>About Pixelguard</h1>
+		<p>
+			Pixelguard is an open-source visual regression testing tool that helps you
+			catch unintended UI changes before they reach production.
+		</p>
+		<ul>
+			{
+				features.map((feature) => (
+					<li>
+						<span class="check">✓</span>
+						{feature}
+					</li>
+				))
+			}
+		</ul>
+		<a href="/" class="btn">Back to Home</a>
+	</main>
+</Layout>
+
+<style>
+	main {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 100vh;
+		padding: 2rem;
+		background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+	}
+	h1 {
+		font-size: 3rem;
+		color: white;
+		margin-bottom: 1rem;
+		text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+	}
+	p {
+		font-size: 1.25rem;
+		color: rgba(255, 255, 255, 0.9);
+		max-width: 600px;
+		text-align: center;
+		line-height: 1.6;
+		margin-bottom: 2rem;
+	}
+	ul {
+		list-style: none;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: white;
+		font-size: 1.1rem;
+	}
+	.check {
+		font-weight: bold;
+	}
+	.btn {
+		margin-top: 2rem;
+		padding: 0.75rem 1.5rem;
+		background: white;
+		color: #11998e;
+		border-radius: 8px;
+		text-decoration: none;
+		font-weight: 600;
+	}
+</style>

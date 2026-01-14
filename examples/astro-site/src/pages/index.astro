@@ -1,0 +1,62 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Pixelguard - Astro Example">
+	<main>
+		<h1>Welcome to Pixelguard</h1>
+		<p>
+			Visual regression testing for your Astro site. This is an example page
+			that can be captured and compared.
+		</p>
+		<div class="links">
+			<a href="/about" class="btn primary">About</a>
+			<a href="/contact" class="btn secondary">Contact</a>
+		</div>
+	</main>
+</Layout>
+
+<style>
+	main {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 100vh;
+		padding: 2rem;
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	}
+	h1 {
+		font-size: 3rem;
+		color: white;
+		margin-bottom: 1rem;
+		text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+	}
+	p {
+		font-size: 1.25rem;
+		color: rgba(255, 255, 255, 0.9);
+		max-width: 600px;
+		text-align: center;
+		line-height: 1.6;
+	}
+	.links {
+		display: flex;
+		gap: 1rem;
+		margin-top: 2rem;
+	}
+	.btn {
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		text-decoration: none;
+		font-weight: 600;
+	}
+	.btn.primary {
+		background: white;
+		color: #667eea;
+	}
+	.btn.secondary {
+		background: rgba(255, 255, 255, 0.2);
+		color: white;
+		border: 2px solid white;
+	}
+</style>

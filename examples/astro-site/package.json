@@ -1,0 +1,21 @@
+{
+	"name": "pixelguard-example-astro",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"pixelguard": "../../target/release/pixelguard",
+		"pixelguard:test:visual": "npm run pixelguard test",
+		"pixelguard:test:visual:update": "npm run pixelguard test --update"
+	},
+	"dependencies": {
+		"astro": "^5.16.9"
+	},
+	"devDependencies": {
+		"playwright": "^1.57.0",
+		"typescript": "^5.9.3"
+	}
+}
