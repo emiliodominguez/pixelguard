@@ -12,7 +12,9 @@
 		"pixelguard:init": "npm run pixelguard -- init",
 		"pixelguard:test": "npm run pixelguard -- test",
 		"pixelguard:update": "npm run pixelguard -- test --update",
-		"pixelguard:list": "npm run pixelguard -- list"
+		"pixelguard:list": "npm run pixelguard -- list",
+		"pixelguard:test:plugins": "npm run pixelguard -- test --config pixelguard.plugins.config.json",
+		"pixelguard:update:plugins": "npm run pixelguard -- test --update --config pixelguard.plugins.config.json"
 	},
 	"dependencies": {
 		"react": "^18.2.0",

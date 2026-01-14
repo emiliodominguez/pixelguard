@@ -1,0 +1,22 @@
+{
+	"source": "storybook",
+	"baseUrl": "http://localhost:6006",
+	"include": ["**/*"],
+	"exclude": [],
+	"viewport": {
+		"width": 1280,
+		"height": 720
+	},
+	"threshold": 0.01,
+	"outputDir": ".pixelguard",
+	"plugins": ["../plugins/pixelguard-plugin-json-reporter", "../plugins/pixelguard-plugin-console-notifier"],
+	"pluginOptions": {
+		"../plugins/pixelguard-plugin-json-reporter": {
+			"filename": "results.json",
+			"pretty": true
+		},
+		"../plugins/pixelguard-plugin-console-notifier": {
+			"verbose": true
+		}
+	}
+}
