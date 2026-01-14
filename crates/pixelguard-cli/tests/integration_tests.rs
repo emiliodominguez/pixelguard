@@ -9,7 +9,7 @@ use tempfile::tempdir;
 
 /// Returns a Command configured to run pixelguard.
 fn pixelguard() -> Command {
-    Command::cargo_bin("pixelguard").unwrap()
+    Command::new(assert_cmd::cargo::cargo_bin!("pixelguard"))
 }
 
 #[test]
