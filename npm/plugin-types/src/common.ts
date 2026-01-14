@@ -5,12 +5,7 @@
 /**
  * Plugin categories that can extend Pixelguard functionality.
  */
-export type PluginCategory =
-	| "storage"
-	| "reporter"
-	| "capture"
-	| "differ"
-	| "notifier";
+export type PluginCategory = "storage" | "reporter" | "capture" | "differ" | "notifier";
 
 /**
  * Plugin manifest declared in package.json's "pixelguard" field.
