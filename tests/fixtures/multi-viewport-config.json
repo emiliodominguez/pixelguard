@@ -1,0 +1,17 @@
+{
+	"source": "manual",
+	"baseUrl": "http://localhost:3000",
+	"viewports": [
+		{ "name": "desktop", "width": 1920, "height": 1080 },
+		{ "name": "tablet", "width": 768, "height": 1024 },
+		{ "name": "mobile", "width": 375, "height": 667 }
+	],
+	"threshold": 0.01,
+	"outputDir": ".pixelguard",
+	"shots": [
+		{
+			"name": "home",
+			"path": "/"
+		}
+	]
+}

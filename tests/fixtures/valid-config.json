@@ -1,0 +1,21 @@
+{
+	"source": "manual",
+	"baseUrl": "http://localhost:3000",
+	"viewport": {
+		"width": 1280,
+		"height": 720
+	},
+	"threshold": 0.01,
+	"outputDir": ".pixelguard",
+	"concurrency": 4,
+	"shots": [
+		{
+			"name": "home",
+			"path": "/"
+		},
+		{
+			"name": "about",
+			"path": "/about"
+		}
+	]
+}

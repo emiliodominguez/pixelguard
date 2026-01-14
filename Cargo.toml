@@ -47,3 +47,7 @@ regex = "1.11"
 
 # Base64 encoding
 base64 = "0.22"
+
+# Testing
+assert_cmd = "2.0"
+predicates = "3.1"
