@@ -6,8 +6,9 @@
 
 use std::net::SocketAddr;
 use std::path::Path;
+use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::Router;
 use clap::Args;
 use pixelguard_core::{
@@ -115,6 +116,12 @@ pub async fn run(args: TestArgs) -> Result<()> {
     }
 
     let shot_count = config.shots.len();
+
+    // Early validation: Check Node.js and Playwright before capturing
+    // Skip if using a capture plugin (it handles its own dependencies)
+    if !plugin_registry.has_override(PluginCategory::Capture) {
+        validate_capture_environment()?;
+    }
 
     if !args.ci {
         println!("Capturing {} screenshots...", shot_count);
@@ -508,4 +515,35 @@ fn merge_shots(discovered: Vec<Shot>, overrides: &[Shot]) -> Vec<Shot> {
             shot
         })
         .collect()
+}
+
+/// Validates that Node.js and Playwright are available before attempting capture.
+///
+/// This provides a clear error message upfront rather than failing mid-capture
+/// with a confusing "command not found" error.
+fn validate_capture_environment() -> Result<()> {
+    // Check Node.js
+    Command::new("node").arg("--version").output().context(
+        "Node.js is required for screenshot capture but was not found. \
+             Please install Node.js from https://nodejs.org",
+    )?;
+
+    // Check Playwright (via npx or node_modules)
+    let npx_check = Command::new("npx")
+        .args(["playwright", "--version"])
+        .output();
+
+    let has_playwright = npx_check.map(|o| o.status.success()).unwrap_or(false)
+        || Path::new("node_modules/@playwright/test").exists()
+        || Path::new("node_modules/playwright").exists();
+
+    if !has_playwright {
+        anyhow::bail!(
+            "Playwright is required for screenshot capture but was not found.\n\
+             Install it with: npm install -D @playwright/test\n\
+             Then run: npx playwright install chromium"
+        );
+    }
+
+    Ok(())
 }
