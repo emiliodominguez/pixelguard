@@ -236,12 +236,11 @@ Optional shot overrides can be specified for custom delays or wait selectors:
 
 ### `detect.rs`
 
-Detect project type by checking:
+Storybook-first detection:
 
-1. **Storybook**: `.storybook/` exists → try ports 6006, 6007, 6008 → fetch `/index.json` or `/stories.json`
-2. **Next.js**: `next.config.{js,mjs,ts}` exists → try ports 3000, 3001 → scan `app/` and `pages/` for routes
-3. **Vite**: `vite.config.{js,ts,mjs}` exists → try ports 5173, 5174, 3000
-4. **Unknown**: Return minimal config, let user define shots manually
+1. **Storybook**: `.storybook/` exists → probe ports (6006, 6007, 6008 or custom) → fetch `/index.json` or `/stories.json` → auto-discover stories
+2. **Dev Server**: Probe common ports (3000, 5173, 8080, 4200) → return base URL, user configures shots manually
+3. **Unknown**: No server found → user must configure everything manually
 
 ### `capture.rs`
 

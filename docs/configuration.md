@@ -33,10 +33,8 @@ The project type. Automatically set by `pixelguard init`.
 
 Values:
 
-- `"storybook"` - Storybook project
-- `"nextjs"` - Next.js project
-- `"vite"` - Vite project
-- `"manual"` - Manual configuration
+- `"storybook"` - Storybook project (stories auto-discovered)
+- `"manual"` - Manual configuration (any other project)
 
 ### `baseUrl`
 
@@ -48,8 +46,22 @@ The base URL of your development server. All shot paths are relative to this URL
 Examples:
 
 - `"http://localhost:6006"` - Storybook
-- `"http://localhost:3000"` - Next.js
+- `"http://localhost:3000"` - Next.js, Remix
 - `"http://localhost:5173"` - Vite
+- `"http://localhost:4200"` - Angular
+
+### `port`
+
+**Type:** `number`
+**Default:** (auto-detect)
+
+Port to use for dev server detection during `pixelguard init`. Overrides automatic port probing.
+
+```json
+{
+	"port": 8080
+}
+```
 
 ### `include`
 

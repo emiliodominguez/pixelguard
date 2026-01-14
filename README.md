@@ -4,7 +4,7 @@ Open-source visual regression testing CLI. Zero config, git-friendly, no backend
 
 ## Features
 
-- **Zero Config** — Auto-detects Storybook, Next.js, and Vite projects
+- **Zero Config** — Auto-detects Storybook projects with story discovery
 - **Git-Friendly** — Screenshots stored in `.pixelguard/`, committed to your repo
 - **Fast** — Written in Rust with parallel screenshot capture
 - **No Backend** — Everything runs locally or in CI
@@ -47,6 +47,7 @@ npx pixelguard init
 
 Options:
 - `--force` — Overwrite existing configuration
+- `--port, -p <number>` — Port to use for dev server detection
 
 ### `pixelguard test`
 
