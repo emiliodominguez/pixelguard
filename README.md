@@ -112,6 +112,27 @@ Options:
 - `--config, -c <path>` — Use a custom config file
 - `--json` — Output as JSON
 
+### `pixelguard validate`
+
+Validate environment prerequisites before running tests.
+
+```bash
+npx pixelguard validate
+
+# Output:
+# Environment Validation
+# ──────────────────────
+# ✓ config     pixelguard.config.json found and valid
+# ✓ node       Node.js v20.10.0
+# ✓ playwright Playwright is installed
+# ✓ base_url   http://localhost:6006 is reachable
+```
+
+Options:
+- `--config, -c <path>` — Use a custom config file
+- `--json` — Output as JSON
+- `--skip-url-check` — Skip checking if base URL is reachable
+
 ## Configuration
 
 Pixelguard uses `pixelguard.config.json` in your project root:
@@ -144,6 +165,7 @@ All fields are optional with sensible defaults. **Stories are discovered dynamic
 | `exclude` | string[] | `[]` | Glob patterns for shots to exclude |
 | `viewport.width` | number | `1280` | Viewport width in pixels |
 | `viewport.height` | number | `720` | Viewport height in pixels |
+| `viewports` | NamedViewport[] | `[]` | Multiple named viewports for responsive testing |
 | `threshold` | number | `0.01` | Diff threshold (0.0 to 100.0, percentage) |
 | `outputDir` | string | `.pixelguard` | Directory for screenshots and reports |
 | `concurrency` | number | `4` | Number of screenshots to capture in parallel |
@@ -171,6 +193,22 @@ For Storybook projects, shots are discovered automatically. You can optionally p
 | `name` | string | Shot name to override (must match discovered name) |
 | `waitFor` | string | CSS selector to wait for before capture |
 | `delay` | number | Delay in ms after page load |
+
+### Multiple Viewports
+
+Test across different screen sizes by specifying multiple viewports:
+
+```json
+{
+  "viewports": [
+    { "name": "desktop", "width": 1920, "height": 1080 },
+    { "name": "tablet", "width": 768, "height": 1024 },
+    { "name": "mobile", "width": 375, "height": 667 }
+  ]
+}
+```
+
+Screenshots are named `{shot}@{viewport}.png` (e.g., `button--primary@mobile.png`).
 
 ## CI Integration
 
