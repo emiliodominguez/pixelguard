@@ -4,6 +4,7 @@
 //! providing lookup methods for the test command to find relevant plugins.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::types::{LoadedPlugin, PluginCategory};
 
@@ -12,19 +13,22 @@ use super::types::{LoadedPlugin, PluginCategory};
 /// Organizes plugins by category for efficient lookup. Handles the distinction
 /// between stackable categories (notifiers, reporters) and single-winner
 /// categories (storage, capture, differ).
+///
+/// Uses `Arc<LoadedPlugin>` internally to avoid cloning plugins when they
+/// need to be stored in multiple collections.
 #[derive(Debug, Default)]
 pub struct PluginRegistry {
     /// Single plugin per category (storage, capture, differ)
-    by_category: HashMap<PluginCategory, LoadedPlugin>,
+    by_category: HashMap<PluginCategory, Arc<LoadedPlugin>>,
 
     /// Stackable plugins: notifiers
-    notifiers: Vec<LoadedPlugin>,
+    notifiers: Vec<Arc<LoadedPlugin>>,
 
     /// Stackable plugins: reporters
-    reporters: Vec<LoadedPlugin>,
+    reporters: Vec<Arc<LoadedPlugin>>,
 
     /// All plugins by name for direct lookup
-    by_name: HashMap<String, LoadedPlugin>,
+    by_name: HashMap<String, Arc<LoadedPlugin>>,
 }
 
 impl PluginRegistry {
@@ -40,16 +44,17 @@ impl PluginRegistry {
     pub fn register(&mut self, plugin: LoadedPlugin) {
         let name = plugin.name().to_string();
         let category = plugin.category();
+        let plugin = Arc::new(plugin);
 
         match category {
             PluginCategory::Notifier => {
-                self.notifiers.push(plugin.clone());
+                self.notifiers.push(Arc::clone(&plugin));
             }
             PluginCategory::Reporter => {
-                self.reporters.push(plugin.clone());
+                self.reporters.push(Arc::clone(&plugin));
             }
             _ => {
-                self.by_category.insert(category, plugin.clone());
+                self.by_category.insert(category, Arc::clone(&plugin));
             }
         }
 
@@ -63,27 +68,22 @@ impl PluginRegistry {
         if category.can_stack() {
             return None;
         }
-        self.by_category.get(&category)
-    }
-
-    /// Alias for `get()` - gets the override plugin for a single-winner category.
-    pub fn get_override(&self, category: PluginCategory) -> Option<&LoadedPlugin> {
-        self.get(category)
+        self.by_category.get(&category).map(|arc| arc.as_ref())
     }
 
     /// Gets a plugin by name.
     pub fn get_by_name(&self, name: &str) -> Option<&LoadedPlugin> {
-        self.by_name.get(name)
+        self.by_name.get(name).map(|arc| arc.as_ref())
     }
 
     /// Gets all registered notifier plugins.
-    pub fn notifiers(&self) -> &[LoadedPlugin] {
-        &self.notifiers
+    pub fn notifiers(&self) -> Vec<&LoadedPlugin> {
+        self.notifiers.iter().map(|arc| arc.as_ref()).collect()
     }
 
     /// Gets all registered reporter plugins.
-    pub fn reporters(&self) -> &[LoadedPlugin] {
-        &self.reporters
+    pub fn reporters(&self) -> Vec<&LoadedPlugin> {
+        self.reporters.iter().map(|arc| arc.as_ref()).collect()
     }
 
     /// Checks if a category has an override plugin registered.
@@ -114,16 +114,17 @@ impl PluginRegistry {
     ///
     /// Useful for displaying all active plugins.
     pub fn all_active(&self) -> Vec<&LoadedPlugin> {
-        let mut active: Vec<&LoadedPlugin> = Vec::new();
+        let capacity = self.by_category.len() + self.notifiers.len() + self.reporters.len();
+        let mut active: Vec<&LoadedPlugin> = Vec::with_capacity(capacity);
 
         // Add single-winner plugins
         for plugin in self.by_category.values() {
-            active.push(plugin);
+            active.push(plugin.as_ref());
         }
 
         // Add stackable plugins
-        active.extend(self.notifiers.iter());
-        active.extend(self.reporters.iter());
+        active.extend(self.notifiers.iter().map(|arc| arc.as_ref()));
+        active.extend(self.reporters.iter().map(|arc| arc.as_ref()));
 
         active
     }
