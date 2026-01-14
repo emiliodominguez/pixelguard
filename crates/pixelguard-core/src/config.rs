@@ -3,6 +3,7 @@
 //! This module handles loading, saving, and managing the `pixelguard.config.json` file.
 //! All configuration fields are optional with sensible defaults.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::Result;
@@ -43,6 +44,52 @@ pub struct Config {
     /// List of shots to capture
     #[serde(default)]
     pub shots: Vec<Shot>,
+
+    /// List of plugins to load
+    #[serde(default)]
+    pub plugins: Vec<PluginEntry>,
+
+    /// Plugin-specific options keyed by plugin name
+    #[serde(default)]
+    pub plugin_options: HashMap<String, serde_json::Value>,
+}
+
+/// A plugin entry in the configuration.
+///
+/// Can be either a simple string (plugin name) or an object with name and options.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PluginEntry {
+    /// Simple plugin name (e.g., "pixelguard-plugin-s3")
+    Name(String),
+
+    /// Plugin with inline options
+    WithOptions {
+        /// Plugin package name
+        name: String,
+
+        /// Plugin-specific options
+        #[serde(default)]
+        options: serde_json::Value,
+    },
+}
+
+impl PluginEntry {
+    /// Returns the plugin name regardless of entry type.
+    pub fn name(&self) -> &str {
+        match self {
+            PluginEntry::Name(name) => name,
+            PluginEntry::WithOptions { name, .. } => name,
+        }
+    }
+
+    /// Returns the inline options if present.
+    pub fn options(&self) -> Option<&serde_json::Value> {
+        match self {
+            PluginEntry::Name(_) => None,
+            PluginEntry::WithOptions { options, .. } => Some(options),
+        }
+    }
 }
 
 /// Viewport dimensions for screenshots.
@@ -116,6 +163,8 @@ impl Default for Config {
             threshold: default_threshold(),
             output_dir: default_output_dir(),
             shots: Vec::new(),
+            plugins: Vec::new(),
+            plugin_options: HashMap::new(),
         }
     }
 }
@@ -295,5 +344,74 @@ mod tests {
         config.save_to_dir(dir.path()).unwrap();
 
         assert!(Config::exists(dir.path()));
+    }
+
+    #[test]
+    fn config_parses_simple_plugin_names() {
+        let json = r#"{
+            "plugins": ["pixelguard-plugin-s3", "pixelguard-plugin-slack"]
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert_eq!(config.plugins.len(), 2);
+        assert_eq!(config.plugins[0].name(), "pixelguard-plugin-s3");
+        assert_eq!(config.plugins[1].name(), "pixelguard-plugin-slack");
+    }
+
+    #[test]
+    fn config_parses_plugin_with_options() {
+        let json = r#"{
+            "plugins": [
+                {
+                    "name": "pixelguard-plugin-slack",
+                    "options": {
+                        "webhookUrl": "https://hooks.slack.com/test"
+                    }
+                }
+            ]
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert_eq!(config.plugins.len(), 1);
+        assert_eq!(config.plugins[0].name(), "pixelguard-plugin-slack");
+
+        let options = config.plugins[0].options().unwrap();
+        assert_eq!(options["webhookUrl"], "https://hooks.slack.com/test");
+    }
+
+    #[test]
+    fn config_parses_mixed_plugin_entries() {
+        let json = r##"{
+            "plugins": [
+                "pixelguard-plugin-s3",
+                {
+                    "name": "pixelguard-plugin-slack",
+                    "options": { "channel": "#testing" }
+                }
+            ],
+            "pluginOptions": {
+                "pixelguard-plugin-s3": {
+                    "bucket": "my-bucket",
+                    "region": "us-east-1"
+                }
+            }
+        }"##;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert_eq!(config.plugins.len(), 2);
+        assert_eq!(config.plugins[0].name(), "pixelguard-plugin-s3");
+        assert!(config.plugins[0].options().is_none());
+
+        assert_eq!(config.plugins[1].name(), "pixelguard-plugin-slack");
+        assert!(config.plugins[1].options().is_some());
+
+        assert!(config.plugin_options.contains_key("pixelguard-plugin-s3"));
+        assert_eq!(
+            config.plugin_options["pixelguard-plugin-s3"]["bucket"],
+            "my-bucket"
+        );
     }
 }

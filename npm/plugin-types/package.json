@@ -1,0 +1,35 @@
+{
+	"name": "@pixelguard/plugin-types",
+	"version": "0.1.0-alpha.1",
+	"description": "TypeScript type definitions for Pixelguard plugins",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"prepublishOnly": "npm run build"
+	},
+	"keywords": [
+		"pixelguard",
+		"plugin",
+		"types",
+		"typescript",
+		"visual-regression"
+	],
+	"author": "Pixelguard Contributors",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/emiliodominguez/pixelguard.git",
+		"directory": "npm/plugin-types"
+	},
+	"bugs": {
+		"url": "https://github.com/emiliodominguez/pixelguard/issues"
+	},
+	"homepage": "https://github.com/emiliodominguez/pixelguard#readme",
+	"devDependencies": {
+		"typescript": "^5.0.0"
+	}
+}
