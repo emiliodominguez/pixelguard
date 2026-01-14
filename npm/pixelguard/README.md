@@ -30,7 +30,7 @@ npx pixelguard test
 
 ## Documentation
 
-See the full documentation at [github.com/pixelguard/pixelguard](https://github.com/pixelguard/pixelguard).
+See the full documentation at [github.com/emiliodominguez/pixelguard](https://github.com/emiliodominguez/pixelguard).
 
 ## License
 

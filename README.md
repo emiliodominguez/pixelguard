@@ -69,6 +69,8 @@ Options:
 - `--ci` — CI mode with machine-readable JSON output
 - `--filter <pattern>` — Only test shots matching pattern
 - `--verbose` — Show detailed progress
+- `--serve` — Serve the HTML report in browser after completion
+- `--port <number>` — Port for serving the report (default: 3333)
 
 ### `pixelguard list`
 

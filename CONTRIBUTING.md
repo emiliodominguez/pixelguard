@@ -14,7 +14,7 @@ Thank you for your interest in contributing to Pixelguard! This document provide
 
 ```bash
 # Clone the repository
-git clone https://github.com/pixelguard/pixelguard.git
+git clone https://github.com/emiliodominguez/pixelguard.git
 cd pixelguard
 
 # Build in debug mode

@@ -89,7 +89,7 @@ function main() {
 		console.error("  npm install pixelguard");
 		console.error("");
 		console.error("Or build from source:");
-		console.error("  git clone https://github.com/pixelguard/pixelguard.git");
+		console.error("  git clone https://github.com/emiliodominguez/pixelguard.git");
 		console.error("  cd pixelguard && cargo build --release");
 		process.exit(1);
 	}

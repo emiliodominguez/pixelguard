@@ -26,7 +26,7 @@ node --version  # Should be v18.0.0 or higher
 If the prebuilt binary fails to download, you can build from source:
 
 ```bash
-git clone https://github.com/pixelguard/pixelguard.git
+git clone https://github.com/emiliodominguez/pixelguard.git
 cd pixelguard
 cargo build --release
 # Binary will be at target/release/pixelguard
@@ -239,7 +239,7 @@ Check that the image files exist in `.pixelguard/baseline/`, `.pixelguard/curren
 
 If your issue isn't listed here:
 
-1. Check [GitHub Issues](https://github.com/pixelguard/pixelguard/issues)
+1. Check [GitHub Issues](https://github.com/emiliodominguez/pixelguard/issues)
 2. Run with `--verbose` for detailed logs
 3. Open a new issue with:
    - Pixelguard version

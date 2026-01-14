@@ -25,7 +25,7 @@ const PACKAGE_VERSION = require("../package.json").version;
  * GitHub repository path for release downloads.
  * @constant {string}
  */
-const GITHUB_REPO = "pixelguard/pixelguard";
+const GITHUB_REPO = "emiliodominguez/pixelguard";
 
 /**
  * Mapping of Node.js platform/arch combinations to Rust target triples.
@@ -94,7 +94,7 @@ function getBinaryName() {
  * @returns {string} Full download URL for the binary
  * @example
  * getDownloadUrl("x86_64-apple-darwin")
- * // => "https://github.com/pixelguard/pixelguard/releases/download/v0.1.0/pixelguard-x86_64-apple-darwin"
+ * // => "https://github.com/emiliodominguez/pixelguard/releases/download/v0.1.0/pixelguard-x86_64-apple-darwin"
  */
 function getDownloadUrl(triple) {
 	return `https://github.com/${GITHUB_REPO}/releases/download/v${PACKAGE_VERSION}/pixelguard-${triple}${
@@ -190,7 +190,7 @@ async function main() {
 		console.error(`Failed to download Pixelguard: ${err.message}`);
 		console.error("");
 		console.error("You can try building from source:");
-		console.error("  git clone https://github.com/pixelguard/pixelguard.git");
+		console.error("  git clone https://github.com/emiliodominguez/pixelguard.git");
 		console.error("  cd pixelguard && cargo build --release");
 		console.error("");
 
