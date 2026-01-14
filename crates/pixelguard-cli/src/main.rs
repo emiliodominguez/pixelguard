@@ -39,6 +39,9 @@ enum Commands {
 
     /// List and validate installed plugins
     Plugins(commands::plugins::PluginsArgs),
+
+    /// Validate environment prerequisites (Node.js, Playwright, etc.)
+    Validate(commands::validate::ValidateArgs),
 }
 
 #[tokio::main]
@@ -63,5 +66,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Test(args) => commands::test::run(args).await,
         Commands::List(args) => commands::list::run(args).await,
         Commands::Plugins(args) => commands::plugins::run(args).await,
+        Commands::Validate(args) => commands::validate::run(args).await,
     }
 }

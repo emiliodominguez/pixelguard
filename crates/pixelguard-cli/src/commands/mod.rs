@@ -5,6 +5,7 @@
 //! - `test`: Capture and compare screenshots
 //! - `list`: List configured shots
 //! - `plugins`: List and validate installed plugins
+//! - `validate`: Check environment prerequisites
 
 use std::path::Path;
 
@@ -15,6 +16,7 @@ pub mod init;
 pub mod list;
 pub mod plugins;
 pub mod test;
+pub mod validate;
 
 /// Loads config from a custom path or the default location.
 pub fn load_config(working_dir: &Path, config_path: Option<&str>) -> Result<Config> {
