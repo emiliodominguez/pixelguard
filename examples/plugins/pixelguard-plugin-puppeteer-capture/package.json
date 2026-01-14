@@ -1,0 +1,27 @@
+{
+	"name": "pixelguard-plugin-puppeteer-capture",
+	"version": "1.0.0",
+	"description": "Puppeteer capture plugin for Pixelguard - use Puppeteer instead of Playwright",
+	"main": "src/index.js",
+	"keywords": [
+		"pixelguard",
+		"plugin",
+		"capture",
+		"puppeteer",
+		"screenshot",
+		"visual-regression"
+	],
+	"author": "",
+	"license": "MIT",
+	"peerDependencies": {
+		"puppeteer": "^21.0.0"
+	},
+	"pixelguard": {
+		"name": "Puppeteer Capture",
+		"category": "capture",
+		"entry": "src/index.js",
+		"hooks": [
+			"capture"
+		]
+	}
+}

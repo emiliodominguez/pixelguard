@@ -1,0 +1,41 @@
+{
+	"name": "pixelguard-plugin-slack-notifier",
+	"version": "1.0.0",
+	"description": "Slack notification plugin for Pixelguard visual regression tests",
+	"main": "src/index.js",
+	"pixelguard": {
+		"name": "Slack Notifier",
+		"category": "notifier",
+		"entry": "src/index.js",
+		"hooks": [
+			"notify"
+		],
+		"optionsSchema": {
+			"type": "object",
+			"properties": {
+				"webhookUrl": {
+					"type": "string",
+					"description": "Slack incoming webhook URL"
+				},
+				"channel": {
+					"type": "string",
+					"description": "Override channel (optional)"
+				},
+				"onlyOnFailure": {
+					"type": "boolean",
+					"description": "Only notify when there are visual changes"
+				}
+			},
+			"required": [
+				"webhookUrl"
+			]
+		}
+	},
+	"keywords": [
+		"pixelguard",
+		"plugin",
+		"notifier",
+		"slack"
+	],
+	"license": "MIT"
+}
