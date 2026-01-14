@@ -33,9 +33,10 @@ Thumbs.db
 
 # Pixelguard output (for development)
 # Note: Users should commit .pixelguard/baseline/ to their repos
-.pixelguard/current/
-.pixelguard/diff/
-.pixelguard/report.html
+**/.pixelguard/current/
+**/.pixelguard/diff/
+**/.pixelguard/report.html
+**/.pixelguard/results.json
 
 # Environment
 .env
