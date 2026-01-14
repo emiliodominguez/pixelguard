@@ -1,59 +1,99 @@
 # Pixelguard Examples
 
-This directory contains example projects demonstrating how to use Pixelguard with different frameworks.
+This directory contains example projects demonstrating how to use Pixelguard with different frameworks and configurations.
 
 ## Available Examples
 
-| Example | Framework | Port | Auto-Discovery |
-|---------|-----------|------|----------------|
-| [storybook-vite](./storybook-vite) | Storybook 8 + Vite | 6006 | Yes (stories) |
-| [nextjs-app](./nextjs-app) | Next.js 15 | 3000 | No (manual shots) |
-| [vite-react](./vite-react) | Vite 7 + React 19 | 5173 | No (manual shots) |
-| [astro-site](./astro-site) | Astro 5 | 4321 | No (manual shots) |
+| Example | Framework | Port | Auto-Discovery | Purpose |
+|---------|-----------|------|----------------|---------|
+| [storybook-vite](./storybook-vite) | Storybook 8 + Vite 6 | 6006 | Yes | Demonstrates automatic story discovery |
+| [nextjs-app](./nextjs-app) | Next.js 15 | 3000 | No | Shows App Router integration with manual shots |
+| [vite-react](./vite-react) | Vite 7 + React 19 | 5173 | No | SPA with client-side routing |
+| [astro-site](./astro-site) | Astro 5 | 4321 | No | Static site generation workflow |
 
-## Running an Example
+## Example Details
 
-Each example follows the same pattern:
+### storybook-vite
+
+**Purpose:** Showcases Pixelguard's primary use case - automatic visual regression testing for component libraries.
+
+**Key Features:**
+- Automatic story discovery from Storybook's `/index.json` endpoint
+- No manual shot configuration needed
+- Includes multiple component types (Button, Card, Badge, Alert, Input)
+- Plugin testing configuration included
+
+**Best For:** Teams using Storybook for component development who want zero-config visual testing.
+
+### nextjs-app
+
+**Purpose:** Demonstrates Pixelguard with a server-rendered React application using Next.js App Router.
+
+**Key Features:**
+- Manual shot configuration for page routes
+- App Router structure (`src/app/`)
+- Server-side rendering compatibility
+
+**Best For:** Next.js applications where you want to test specific pages rather than isolated components.
+
+### vite-react
+
+**Purpose:** Shows Pixelguard with a client-side single-page application.
+
+**Key Features:**
+- React Router for client-side navigation
+- Manual shot configuration
+- Latest Vite 7 and React 19
+
+**Best For:** SPAs built with Vite where you need to test multiple routes.
+
+### astro-site
+
+**Purpose:** Demonstrates Pixelguard with a static site generator.
+
+**Key Features:**
+- Astro components and layouts
+- Static HTML generation
+- Manual shot configuration
+
+**Best For:** Content-focused sites and documentation where visual consistency matters.
+
+## Quick Start
+
+All examples follow the same workflow:
 
 ```bash
-# Navigate to the example directory
+# 1. Navigate to an example
 cd examples/<example-name>
 
-# Install dependencies
+# 2. Install dependencies
 npm install
 
-# Start the dev server
-npm run dev  # or `npm run storybook` for storybook-vite
+# 3. Start the dev server
+npm run dev          # For nextjs-app, vite-react, astro-site
+npm run storybook    # For storybook-vite
 
-# In another terminal, run Pixelguard
-npm run pixelguard:test:visual:update  # Create baseline
-npm run pixelguard:test:visual         # Run tests
+# 4. In another terminal, create baseline screenshots
+npm run pixelguard:test:visual:update
+
+# 5. Run visual regression tests
+npm run pixelguard:test:visual
 ```
 
-## Storybook Example
+## Configuration Patterns
 
-The `storybook-vite` example demonstrates Pixelguard's automatic story discovery. When you run `pixelguard init`, it will:
+### Storybook (Auto-Discovery)
 
-1. Detect the `.storybook/` directory
-2. Connect to Storybook at `http://localhost:6006`
-3. Fetch all stories from `/index.json`
-4. Auto-generate shots for each story
-
-```bash
-cd examples/storybook-vite
-npm install
-npm run storybook  # Start Storybook
-
-# In another terminal
-npm run pixelguard:test:visual:update  # Create baseline
-npm run pixelguard:test:visual         # Run tests
+```json
+{
+  "source": "storybook",
+  "baseUrl": "http://localhost:6006"
+}
 ```
 
-## Framework Examples
+Stories are discovered automatically - no `shots` array needed.
 
-The `nextjs-app`, `vite-react`, and `astro-site` examples demonstrate manual shot configuration for non-Storybook projects.
-
-Each includes a `pixelguard.config.json` with manually configured shots:
+### Framework Apps (Manual Shots)
 
 ```json
 {
@@ -66,23 +106,73 @@ Each includes a `pixelguard.config.json` with manually configured shots:
 }
 ```
 
-To run these examples:
+Each shot requires a `name` (used for the screenshot filename) and `path` (appended to `baseUrl`).
 
-```bash
-cd examples/nextjs-app  # or vite-react, astro-site
-npm install
-npm run dev  # Start the dev server
+### Optional Shot Configuration
 
-# In another terminal
-npm run pixelguard:test:visual:update  # Create baseline
-npm run pixelguard:test:visual         # Run tests
+```json
+{
+  "shots": [
+    {
+      "name": "dashboard",
+      "path": "/dashboard",
+      "waitFor": ".dashboard-loaded",
+      "delay": 500
+    }
+  ]
+}
 ```
 
-## Creating Your Own Config
+- `waitFor`: CSS selector to wait for before capturing
+- `delay`: Additional milliseconds to wait after page load
 
-For non-Storybook projects, you can either:
+## Available Scripts
 
-1. **Use `pixelguard init`** - Detects your dev server and creates a minimal config
-2. **Create manually** - Create `pixelguard.config.json` with your shots
+Each example includes these npm scripts:
 
-See the [Configuration Documentation](../docs/configuration.md) for all available options.
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start the development server |
+| `npm run pixelguard` | Run the pixelguard CLI directly |
+| `npm run pixelguard:test:visual` | Run visual regression tests |
+| `npm run pixelguard:test:visual:update` | Update baseline screenshots |
+
+## Prerequisites
+
+Before running examples, ensure you have:
+
+1. **Node.js 18+** installed
+2. **Playwright browsers** installed:
+   ```bash
+   npx playwright install chromium
+   ```
+3. **Pixelguard binary** built:
+   ```bash
+   # From the repository root
+   cargo build --release
+   ```
+
+## Troubleshooting
+
+### "Connection refused" errors
+
+The dev server must be running before executing Pixelguard commands. Start the server in one terminal, then run Pixelguard in another.
+
+### Screenshots look different
+
+- Check viewport settings in `pixelguard.config.json`
+- Ensure fonts are loaded (add `delay` if needed)
+- Verify the dev server is fully ready before capturing
+
+### Storybook stories not discovered
+
+- Ensure Storybook is running and accessible
+- Check that `/index.json` endpoint returns stories
+- For older Storybook versions, `/stories.json` is also supported
+
+## Further Reading
+
+- [Configuration Reference](../docs/configuration.md)
+- [Plugin System](../docs/plugins.md)
+- [CI/CD Setup](../docs/ci-setup.md)
+- [Troubleshooting Guide](../docs/troubleshooting.md)
