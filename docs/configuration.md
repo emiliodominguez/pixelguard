@@ -6,26 +6,20 @@ Pixelguard uses a `pixelguard.config.json` file in your project root. All fields
 
 ```json
 {
-  "source": "storybook",
-  "baseUrl": "http://localhost:6006",
-  "include": ["**/*"],
-  "exclude": ["**/*Deprecated*", "**/*Legacy*"],
-  "viewport": {
-    "width": 1280,
-    "height": 720
-  },
-  "threshold": 0.1,
-  "outputDir": ".pixelguard",
-  "shots": [
-    {
-      "name": "button--primary",
-      "path": "/iframe.html?id=button--primary",
-      "waitFor": "#storybook-root",
-      "delay": 100
-    }
-  ]
+	"source": "storybook",
+	"baseUrl": "http://localhost:6006",
+	"include": ["**/*"],
+	"exclude": ["**/*Deprecated*", "**/*Legacy*"],
+	"viewport": {
+		"width": 1280,
+		"height": 720
+	},
+	"threshold": 0.01,
+	"outputDir": ".pixelguard"
 }
 ```
+
+**Note:** For Storybook projects, shots are discovered dynamically at test time.
 
 ## Fields
 
@@ -37,6 +31,7 @@ Pixelguard uses a `pixelguard.config.json` file in your project root. All fields
 The project type. Automatically set by `pixelguard init`.
 
 Values:
+
 - `"storybook"` - Storybook project
 - `"nextjs"` - Next.js project
 - `"vite"` - Vite project
@@ -50,6 +45,7 @@ Values:
 The base URL of your development server. All shot paths are relative to this URL.
 
 Examples:
+
 - `"http://localhost:6006"` - Storybook
 - `"http://localhost:3000"` - Next.js
 - `"http://localhost:5173"` - Vite
@@ -62,6 +58,7 @@ Examples:
 Glob patterns for shots to include. Only applicable when shots are auto-discovered.
 
 Examples:
+
 - `["**/*"]` - Include all shots
 - `["components/**/*"]` - Only components
 - `["button--*", "card--*"]` - Specific patterns
@@ -74,6 +71,7 @@ Examples:
 Glob patterns for shots to exclude.
 
 Examples:
+
 - `["**/*Deprecated*"]` - Exclude deprecated
 - `["**/internal/**"]` - Exclude internal components
 
@@ -85,6 +83,7 @@ Examples:
 The viewport size for screenshots.
 
 Common sizes:
+
 - `{ "width": 1920, "height": 1080 }` - Full HD
 - `{ "width": 1280, "height": 720 }` - HD (default)
 - `{ "width": 768, "height": 1024 }` - Tablet
@@ -92,14 +91,14 @@ Common sizes:
 
 ### `threshold`
 
-**Type:** `number` (0.0 to 1.0)
-**Default:** `0.1`
+**Type:** `number` (percentage)
+**Default:** `0.01`
 
-The diff threshold as a percentage. Shots with differences below this threshold are considered unchanged.
+The diff threshold as a percentage of pixels. Shots with differences below this threshold are considered unchanged.
 
 - `0.0` - Any difference fails (strict)
-- `0.1` - 0.1% tolerance (default)
-- `0.5` - 0.5% tolerance (lenient)
+- `0.01` - 0.01% tolerance (default, catches small text changes)
+- `0.1` - 0.1% tolerance (lenient)
 - `1.0` - 1% tolerance (very lenient)
 
 Lower values catch more subtle changes but may produce false positives from anti-aliasing.
@@ -116,35 +115,34 @@ The directory for screenshots and reports.
 **Type:** `Shot[]`
 **Default:** `[]`
 
-Array of shot configurations. Auto-populated by `pixelguard init` for Storybook and Next.js projects.
+Optional array of shot overrides. For Storybook projects, shots are discovered automatically at test time. Use this to provide custom configuration for specific shots.
 
-## Shot Configuration
+## Shot Overrides
 
-Each shot in the `shots` array has these fields:
+You can override settings for specific shots by adding them to the `shots` array:
+
+```json
+{
+	"shots": [
+		{
+			"name": "components-card--with-image",
+			"delay": 500
+		},
+		{
+			"name": "components-modal--animated",
+			"waitFor": ".modal-content",
+			"delay": 1000
+		}
+	]
+}
+```
 
 ### `name`
 
 **Type:** `string`
 **Required:** Yes
 
-Unique identifier for the shot. Used for the screenshot filename.
-
-Examples:
-- `"button--primary"`
-- `"page-home"`
-- `"modal-confirmation"`
-
-### `path`
-
-**Type:** `string`
-**Required:** Yes
-
-URL path appended to `baseUrl`.
-
-Examples:
-- `"/iframe.html?id=button--primary"` - Storybook
-- `"/about"` - Next.js page
-- `"/"` - Homepage
+The shot name to override. Must match the discovered shot name exactly.
 
 ### `waitFor`
 
@@ -153,11 +151,6 @@ Examples:
 
 CSS selector to wait for before capturing the screenshot. Useful for async content.
 
-Examples:
-- `"#storybook-root"` - Storybook root
-- `"[data-loaded='true']"` - Custom loading indicator
-- `".main-content"` - Specific element
-
 ### `delay`
 
 **Type:** `number` (milliseconds)
@@ -165,12 +158,8 @@ Examples:
 
 Additional delay after the page loads and `waitFor` selector is found.
 
-Useful for:
-- Animations to complete
-- Fonts to load
-- Images to render
-
 Common values:
+
 - `100` - Quick delay for minor rendering
 - `500` - Medium delay for animations
 - `1000` - Long delay for complex pages
@@ -193,16 +182,16 @@ To test multiple viewport sizes, create separate configs or use the `--filter` f
 
 ```json
 {
-  "shots": [
-    {
-      "name": "button--primary--desktop",
-      "path": "/iframe.html?id=button--primary"
-    },
-    {
-      "name": "button--primary--mobile",
-      "path": "/iframe.html?id=button--primary&viewport=mobile"
-    }
-  ]
+	"shots": [
+		{
+			"name": "button--primary--desktop",
+			"path": "/iframe.html?id=button--primary"
+		},
+		{
+			"name": "button--primary--mobile",
+			"path": "/iframe.html?id=button--primary&viewport=mobile"
+		}
+	]
 }
 ```
 

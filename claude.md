@@ -154,20 +154,25 @@ Configured shots (47):
     "width": 1280,
     "height": 720
   },
-  "threshold": 0.1,
-  "outputDir": ".pixelguard",
+  "threshold": 0.01,
+  "outputDir": ".pixelguard"
+}
+```
+
+All fields optional — sensible defaults for everything. **Stories are discovered dynamically at test time** from Storybook's `/index.json` endpoint.
+
+Optional shot overrides can be specified for custom delays or wait selectors:
+
+```json
+{
   "shots": [
     {
-      "name": "button--primary",
-      "path": "/iframe.html?id=button--primary",
-      "waitFor": "#storybook-root",
-      "delay": 100
+      "name": "components-card--with-image",
+      "delay": 500
     }
   ]
 }
 ```
-
-All fields optional — sensible defaults for everything.
 
 ---
 
