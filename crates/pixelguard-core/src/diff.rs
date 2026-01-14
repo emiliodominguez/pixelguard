@@ -38,7 +38,7 @@ impl DiffResult {
 /// A shot with visual differences.
 #[derive(Debug, Clone)]
 pub struct ChangedShot {
-    /// Name of the shot
+    /// Name of the shot (includes viewport suffix if multi-viewport, e.g., "button@mobile")
     pub name: String,
     /// Path to baseline image
     pub baseline_path: PathBuf,
@@ -48,6 +48,22 @@ pub struct ChangedShot {
     pub diff_path: PathBuf,
     /// Percentage of pixels that differ (0.0 to 100.0)
     pub diff_percentage: f64,
+    /// Viewport name if multi-viewport (e.g., "mobile"), None for default viewport
+    pub viewport: Option<String>,
+}
+
+/// Parses a shot name into base name and viewport.
+///
+/// For multi-viewport shots named `shot@viewport`, returns `(shot, Some(viewport))`.
+/// For single-viewport shots named `shot`, returns `(shot, None)`.
+fn parse_shot_name(name: &str) -> (&str, Option<&str>) {
+    if let Some(at_pos) = name.rfind('@') {
+        let base = &name[..at_pos];
+        let viewport = &name[at_pos + 1..];
+        (base, Some(viewport))
+    } else {
+        (name, None)
+    }
 }
 
 /// Compares current screenshots against baseline.
@@ -158,12 +174,14 @@ pub fn diff_images<P: AsRef<Path>>(
 
         if diff_percentage > config.threshold {
             info!("{}: {:.2}% different", name, diff_percentage);
+            let (_, viewport) = parse_shot_name(name);
             result.changed.push(ChangedShot {
                 name: name.clone(),
                 baseline_path,
                 current_path,
                 diff_path,
                 diff_percentage,
+                viewport: viewport.map(String::from),
             });
         } else {
             debug!("{}: unchanged", name);
@@ -414,6 +432,7 @@ mod tests {
                 current_path: PathBuf::new(),
                 diff_path: PathBuf::new(),
                 diff_percentage: 1.0,
+                viewport: None,
             }],
             added: Vec::new(),
             removed: Vec::new(),
