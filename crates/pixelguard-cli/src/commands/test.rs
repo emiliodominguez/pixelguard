@@ -180,7 +180,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
         println!("Comparing against baseline...");
     }
 
-    let diff_result = diff_images(&config, &working_dir)?;
+    let diff_result = diff_images(&config, &working_dir, Some(&plugin_registry))?;
 
     // Generate built-in report
     let report_path = generate_report(&config, &diff_result, &working_dir)?;

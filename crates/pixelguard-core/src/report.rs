@@ -26,7 +26,7 @@ use crate::diff::DiffResult;
 ///
 /// fn example() -> anyhow::Result<()> {
 ///     let config = Config::load("pixelguard.config.json")?;
-///     let diff_result = diff_images(&config, ".")?;
+///     let diff_result = diff_images(&config, ".", None)?;
 ///     generate_report(&config, &diff_result, ".")?;
 ///     println!("Report generated at .pixelguard/report.html");
 ///     Ok(())

@@ -66,6 +66,11 @@ impl PluginRegistry {
         self.by_category.get(&category)
     }
 
+    /// Alias for `get()` - gets the override plugin for a single-winner category.
+    pub fn get_override(&self, category: PluginCategory) -> Option<&LoadedPlugin> {
+        self.get(category)
+    }
+
     /// Gets a plugin by name.
     pub fn get_by_name(&self, name: &str) -> Option<&LoadedPlugin> {
         self.by_name.get(name)
