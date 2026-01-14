@@ -8,7 +8,9 @@ Open-source visual regression testing CLI. Zero config, git-friendly, no backend
 - **Git-Friendly** — Screenshots stored in `.pixelguard/`, committed to your repo
 - **Fast** — Written in Rust with parallel screenshot capture
 - **No Backend** — Everything runs locally or in CI
-- **Beautiful Reports** — Static HTML reports that work offline
+- **Beautiful Reports** — Interactive HTML reports with filtering, search, and approval workflow
+- **Review Workflows** — Approve/reject changes in browser or interactive CLI
+- **Selective Updates** — Update specific shots without affecting others
 - **Extensible** — Plugin system for custom storage, reporters, and notifiers
 
 ## Quick Start
@@ -68,12 +70,25 @@ npx pixelguard test
 
 Options:
 - `--update` — Update baseline with current screenshots
+- `--update-only <names>` — Update only specific shots (comma-separated)
 - `--ci` — CI mode with machine-readable JSON output
 - `--filter <pattern>` — Only test shots matching pattern
 - `--config, -c <path>` — Use a custom config file
 - `--verbose` — Show detailed progress
 - `--serve` — Serve the HTML report in browser after completion
 - `--port <number>` — Port for serving the report (default: 3333)
+
+#### Selective Updates
+
+Update only specific shots without affecting others:
+
+```bash
+# Update specific shots
+npx pixelguard test --update-only=button--primary,card--hover
+
+# Update viewport-specific shots
+npx pixelguard test --update-only=header@mobile
+```
 
 ### `pixelguard list`
 
@@ -132,6 +147,44 @@ Options:
 - `--config, -c <path>` — Use a custom config file
 - `--json` — Output as JSON
 - `--skip-url-check` — Skip checking if base URL is reachable
+
+### `pixelguard apply`
+
+Apply decisions from an exported JSON file to update the baseline.
+
+```bash
+# Apply decisions exported from the HTML report
+npx pixelguard apply pixelguard-decisions.json
+
+# Preview what would be updated
+npx pixelguard apply pixelguard-decisions.json --dry-run
+```
+
+Options:
+- `--config, -c <path>` — Use a custom config file
+- `--dry-run` — Show what would be updated without making changes
+
+### `pixelguard review`
+
+Interactively review visual diffs in the terminal.
+
+```bash
+npx pixelguard review
+
+# For each changed shot, prompts:
+# [1/5] button--primary (5.23% different)
+# What would you like to do?
+# > Approve (update baseline)
+#   Reject (keep baseline)
+#   Skip (decide later)
+#   View diff image
+#   Quit review
+```
+
+Options:
+- `--config, -c <path>` — Use a custom config file
+- `--results <path>` — Path to results.json
+- `--open-diff` — Open diff images during review
 
 ## Configuration
 
@@ -254,20 +307,50 @@ jobs:
           path: .pixelguard/report.html
 ```
 
+## Review Workflows
+
+Pixelguard offers multiple ways to review and approve visual changes:
+
+### Browser-Based Review
+
+1. Run tests: `npx pixelguard test --serve`
+2. Open the HTML report in your browser
+3. Use **Filter & Search** to find specific shots
+4. Click **Approve** or **Reject** on each changed shot
+5. Click **Export** to download `pixelguard-decisions.json`
+6. Apply decisions: `npx pixelguard apply pixelguard-decisions.json`
+
+### Interactive CLI Review
+
+```bash
+npx pixelguard review
+```
+
+Step through each changed shot and approve, reject, or skip interactively.
+
+### Selective Update
+
+Update specific shots directly without full review:
+
+```bash
+npx pixelguard test --update-only=button--primary,card--hover
+```
+
 ## How It Works
 
 1. **Detection**: Pixelguard probes common dev server ports and checks for framework config files
 2. **Capture**: Uses Playwright headless Chromium to take screenshots
 3. **Diff**: Compares images pixel-by-pixel with anti-aliasing tolerance
-4. **Report**: Generates a static HTML report with side-by-side comparisons
+4. **Report**: Generates interactive HTML report with filtering, sorting, and approval actions
+5. **Export**: Creates machine-readable `results.json` for CI integration
 
 ## Storage
 
-Screenshots are stored in `.pixelguard/`:
+Screenshots and reports are stored in `.pixelguard/`:
 
 ```
 .pixelguard/
-├── baseline/          # Reference screenshots
+├── baseline/          # Reference screenshots (commit these)
 │   ├── button--primary.png
 │   └── card--default.png
 ├── current/           # Latest captures
@@ -275,12 +358,35 @@ Screenshots are stored in `.pixelguard/`:
 │   └── card--default.png
 ├── diff/              # Visual diffs
 │   └── card--default.png
-└── report.html        # HTML report
+├── report.html        # Interactive HTML report
+└── results.json       # Machine-readable JSON export
 ```
 
-Commit the `baseline/` directory to your repository. The `current/` and `diff/` directories are regenerated on each run.
+Commit the `baseline/` directory to your repository. The `current/`, `diff/`, `report.html`, and `results.json` are regenerated on each run.
 
 For large projects, consider using [Git LFS](https://git-lfs.github.com/) for PNG files.
+
+### JSON Export
+
+The `results.json` file is generated alongside the HTML report for CI integration:
+
+```json
+{
+  "version": "1.0",
+  "timestamp": "2026-01-14T12:00:00Z",
+  "summary": {
+    "total": 47,
+    "unchanged": 45,
+    "changed": 2,
+    "passed": false
+  },
+  "results": {
+    "changed": [
+      { "name": "button--primary", "diffPercentage": 5.5 }
+    ]
+  }
+}
+```
 
 ## Plugins
 

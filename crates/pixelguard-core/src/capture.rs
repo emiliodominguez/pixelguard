@@ -341,11 +341,23 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
 ///
 /// This is used when updating the baseline with `--update` flag.
 /// Supports storage plugins for remote baseline storage.
+///
+/// # Arguments
+///
+/// * `config` - The configuration
+/// * `working_dir` - The working directory
+/// * `plugin_registry` - Optional plugin registry for storage plugins
+/// * `filter` - Optional list of shot names to update (if None, updates all)
+///
+/// # Returns
+///
+/// The number of screenshots that were updated.
 pub fn update_baseline<P: AsRef<Path>>(
     config: &Config,
     working_dir: P,
     plugin_registry: Option<&PluginRegistry>,
-) -> Result<()> {
+    filter: Option<&[String]>,
+) -> Result<usize> {
     let working_dir = working_dir.as_ref();
     let output_dir = working_dir.join(&config.output_dir);
     let current_dir = output_dir.join("current");
@@ -370,7 +382,9 @@ pub fn update_baseline<P: AsRef<Path>>(
         std::fs::create_dir_all(working_dir.join(&config.output_dir).join("baseline"))?;
     }
 
-    // Copy all PNG files from current to baseline
+    let mut updated_count = 0;
+
+    // Copy PNG files from current to baseline (optionally filtered)
     for entry in current_files {
         let path = entry.path();
 
@@ -386,15 +400,41 @@ pub fn update_baseline<P: AsRef<Path>>(
         };
         let name = name.to_string_lossy();
 
+        // If filter is provided, skip shots that don't match
+        if let Some(filter_names) = filter {
+            let matches = filter_names.iter().any(|filter_name| {
+                // Match exact name or name with viewport suffix (e.g., "button" matches "button@desktop")
+                name == filter_name.as_str()
+                    || name.starts_with(&format!("{}@", filter_name))
+                    || filter_name == name.as_ref()
+            });
+            if !matches {
+                debug!("Skipping {} (not in filter)", name);
+                continue;
+            }
+        }
+
         let current_path = format!("current/{}", filename);
         let baseline_path = format!("baseline/{}", filename);
 
         storage.copy(&current_path, &baseline_path)?;
         debug!("Updated baseline: {}", name);
+        updated_count += 1;
     }
 
-    info!("Baseline updated with current screenshots");
-    Ok(())
+    if let Some(filter_names) = filter {
+        info!(
+            "Updated {} baseline screenshot(s) matching filter: {:?}",
+            updated_count, filter_names
+        );
+    } else {
+        info!(
+            "Baseline updated with {} current screenshots",
+            updated_count
+        );
+    }
+
+    Ok(updated_count)
 }
 
 /// Returns the paths to baseline and current screenshot directories.
