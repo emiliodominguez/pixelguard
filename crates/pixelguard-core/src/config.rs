@@ -33,9 +33,16 @@ pub struct Config {
     #[serde(default)]
     pub exclude: Vec<String>,
 
-    /// Viewport configuration
+    /// Default viewport configuration (used when `viewports` is empty)
     #[serde(default)]
     pub viewport: Viewport,
+
+    /// Multiple named viewports for responsive testing.
+    ///
+    /// When set, each shot is captured at each viewport size.
+    /// Screenshots are named `{shot}@{viewport}.png`.
+    #[serde(default)]
+    pub viewports: Vec<NamedViewport>,
 
     /// Diff threshold (0.0 to 1.0)
     #[serde(default = "default_threshold")]
@@ -112,6 +119,22 @@ pub struct Viewport {
     pub height: u32,
 }
 
+/// A named viewport for multi-viewport testing.
+///
+/// When multiple viewports are configured, each shot is captured at each viewport size,
+/// with screenshots named `{shot}@{viewport}.png`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedViewport {
+    /// Unique name for this viewport (e.g., "desktop", "mobile")
+    pub name: String,
+
+    /// Width in pixels
+    pub width: u32,
+
+    /// Height in pixels
+    pub height: u32,
+}
+
 /// A single screenshot configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,6 +196,7 @@ impl Default for Config {
             include: default_include(),
             exclude: Vec::new(),
             viewport: Viewport::default(),
+            viewports: Vec::new(),
             threshold: default_threshold(),
             output_dir: default_output_dir(),
             concurrency: default_concurrency(),
@@ -262,6 +286,25 @@ impl Config {
     /// Checks if a config file exists in the given directory.
     pub fn exists<P: AsRef<Path>>(dir: P) -> bool {
         Self::config_path(dir).exists()
+    }
+
+    /// Returns the viewports to use for testing.
+    ///
+    /// If `viewports` is configured, returns those. Otherwise, returns a single
+    /// viewport named "default" based on the legacy `viewport` field.
+    ///
+    /// This provides backward compatibility: configs with only `viewport` work
+    /// as before, while configs with `viewports` enable multi-viewport testing.
+    pub fn effective_viewports(&self) -> Vec<NamedViewport> {
+        if !self.viewports.is_empty() {
+            self.viewports.clone()
+        } else {
+            vec![NamedViewport {
+                name: "default".to_string(),
+                width: self.viewport.width,
+                height: self.viewport.height,
+            }]
+        }
     }
 }
 
@@ -427,5 +470,65 @@ mod tests {
             config.plugin_options["pixelguard-plugin-s3"]["bucket"],
             "my-bucket"
         );
+    }
+
+    #[test]
+    fn effective_viewports_returns_default_when_viewports_empty() {
+        let config = Config {
+            viewport: Viewport {
+                width: 1920,
+                height: 1080,
+            },
+            viewports: Vec::new(),
+            ..Default::default()
+        };
+
+        let viewports = config.effective_viewports();
+        assert_eq!(viewports.len(), 1);
+        assert_eq!(viewports[0].name, "default");
+        assert_eq!(viewports[0].width, 1920);
+        assert_eq!(viewports[0].height, 1080);
+    }
+
+    #[test]
+    fn effective_viewports_returns_configured_viewports() {
+        let config = Config {
+            viewports: vec![
+                NamedViewport {
+                    name: "desktop".to_string(),
+                    width: 1920,
+                    height: 1080,
+                },
+                NamedViewport {
+                    name: "mobile".to_string(),
+                    width: 375,
+                    height: 667,
+                },
+            ],
+            ..Default::default()
+        };
+
+        let viewports = config.effective_viewports();
+        assert_eq!(viewports.len(), 2);
+        assert_eq!(viewports[0].name, "desktop");
+        assert_eq!(viewports[1].name, "mobile");
+    }
+
+    #[test]
+    fn config_parses_viewports_from_json() {
+        let json = r#"{
+            "viewports": [
+                { "name": "desktop", "width": 1920, "height": 1080 },
+                { "name": "tablet", "width": 768, "height": 1024 },
+                { "name": "mobile", "width": 375, "height": 667 }
+            ]
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert_eq!(config.viewports.len(), 3);
+        assert_eq!(config.viewports[0].name, "desktop");
+        assert_eq!(config.viewports[1].name, "tablet");
+        assert_eq!(config.viewports[2].name, "mobile");
     }
 }

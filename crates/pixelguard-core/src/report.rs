@@ -89,6 +89,13 @@ fn generate_html(result: &DiffResult) -> String {
             .changed
             .iter()
             .map(|shot| {
+                // Generate viewport badge if multi-viewport
+                let viewport_badge = shot
+                    .viewport
+                    .as_ref()
+                    .map(|v| format!(r#"<span class="badge badge--viewport">{}</span>"#, html_escape(v)))
+                    .unwrap_or_default();
+
                 format!(
                     r#"
             <div class="shot-card">
@@ -96,6 +103,7 @@ fn generate_html(result: &DiffResult) -> String {
                     <div class="shot-title">
                         <span class="shot-icon">{image_icon}</span>
                         <span class="shot-name">{name}</span>
+                        {viewport_badge}
                     </div>
                     <span class="badge badge--diff">{diff:.2}% changed</span>
                 </div>
@@ -160,6 +168,7 @@ fn generate_html(result: &DiffResult) -> String {
             "#,
                     name = html_escape(&shot.name),
                     diff = shot.diff_percentage,
+                    viewport_badge = viewport_badge,
                     image_icon = icons::IMAGE,
                     zoom_icon = icons::ZOOM_IN,
                 )
@@ -417,6 +426,7 @@ fn generate_html(result: &DiffResult) -> String {
         .badge--diff{{background:var(--color-error-muted);color:var(--color-error)}}
         .badge--new{{background:var(--color-warning-muted);color:var(--color-warning)}}
         .badge--removed{{background:var(--color-info-muted);color:var(--color-info)}}
+        .badge--viewport{{background:var(--color-bg-hover);color:var(--color-text-muted);font-size:10px;padding:3px 8px}}
         .comparison-tabs{{display:flex;gap:4px;padding:12px 20px;border-bottom:1px solid var(--color-border-subtle);background:var(--color-bg)}}
         .tab-btn{{padding:8px 16px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--color-text-muted);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s}}
         .tab-btn:hover{{color:var(--color-text);background:var(--color-bg-hover)}}
@@ -580,6 +590,7 @@ mod tests {
                 current_path: "current/card--default.png".into(),
                 diff_path: "diff/card--default.png".into(),
                 diff_percentage: 5.5,
+                viewport: None,
             }],
             added: vec!["new-component".to_string()],
             removed: vec!["old-component".to_string()],
@@ -594,6 +605,28 @@ mod tests {
         assert!(html.contains("5.50%"));
         assert!(html.contains("new-component"));
         assert!(html.contains("old-component"));
+    }
+
+    #[test]
+    fn generate_html_shows_viewport_badge() {
+        let result = DiffResult {
+            unchanged: vec![],
+            changed: vec![ChangedShot {
+                name: "card--default@mobile".to_string(),
+                baseline_path: "baseline/card--default@mobile.png".into(),
+                current_path: "current/card--default@mobile.png".into(),
+                diff_path: "diff/card--default@mobile.png".into(),
+                diff_percentage: 5.5,
+                viewport: Some("mobile".to_string()),
+            }],
+            added: vec![],
+            removed: vec![],
+        };
+
+        let html = generate_html(&result);
+
+        assert!(html.contains("badge--viewport"));
+        assert!(html.contains("mobile"));
     }
 
     #[test]
