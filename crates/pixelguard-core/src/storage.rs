@@ -37,7 +37,7 @@ impl<'a> Storage<'a> {
         working_dir: PathBuf,
         plugin_registry: Option<&'a PluginRegistry>,
     ) -> Self {
-        let plugin = plugin_registry.and_then(|r| r.get_override(PluginCategory::Storage));
+        let plugin = plugin_registry.and_then(|r| r.get(PluginCategory::Storage));
 
         Self {
             base_dir,
