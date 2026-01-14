@@ -4,12 +4,12 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 
 ## Available Examples
 
-| Example | Framework | Port | Auto-Discovery | Purpose |
-|---------|-----------|------|----------------|---------|
-| [storybook-vite](./storybook-vite) | Storybook 8 + Vite 6 | 6006 | Yes | Demonstrates automatic story discovery |
-| [nextjs-app](./nextjs-app) | Next.js 15 | 3000 | No | Shows App Router integration with manual shots |
-| [vite-react](./vite-react) | Vite 7 + React 19 | 5173 | No | SPA with client-side routing |
-| [astro-site](./astro-site) | Astro 5 | 4321 | No | Static site generation workflow |
+| Example                            | Framework            | Port | Auto-Discovery | Purpose                                        |
+| ---------------------------------- | -------------------- | ---- | -------------- | ---------------------------------------------- |
+| [storybook-vite](./storybook-vite) | Storybook 8 + Vite 6 | 6006 | Yes            | Demonstrates automatic story discovery         |
+| [nextjs-app](./nextjs-app)         | Next.js 15           | 3000 | No             | Shows App Router integration with manual shots |
+| [vite-react](./vite-react)         | Vite 7 + React 19    | 5173 | No             | SPA with client-side routing                   |
+| [astro-site](./astro-site)         | Astro 5              | 4321 | No             | Static site generation workflow                |
 
 ## Example Details
 
@@ -18,6 +18,7 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 **Purpose:** Showcases Pixelguard's primary use case - automatic visual regression testing for component libraries.
 
 **Key Features:**
+
 - Automatic story discovery from Storybook's `/index.json` endpoint
 - No manual shot configuration needed
 - Includes multiple component types (Button, Card, Badge, Alert, Input)
@@ -30,6 +31,7 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 **Purpose:** Demonstrates Pixelguard with a server-rendered React application using Next.js App Router.
 
 **Key Features:**
+
 - Manual shot configuration for page routes
 - App Router structure (`src/app/`)
 - Server-side rendering compatibility
@@ -41,6 +43,7 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 **Purpose:** Shows Pixelguard with a client-side single-page application.
 
 **Key Features:**
+
 - React Router for client-side navigation
 - Manual shot configuration
 - Latest Vite 7 and React 19
@@ -52,6 +55,7 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 **Purpose:** Demonstrates Pixelguard with a static site generator.
 
 **Key Features:**
+
 - Astro components and layouts
 - Static HTML generation
 - Manual shot configuration
@@ -86,8 +90,8 @@ npm run pixelguard:test:visual
 
 ```json
 {
-  "source": "storybook",
-  "baseUrl": "http://localhost:6006"
+	"source": "storybook",
+	"baseUrl": "http://localhost:6006"
 }
 ```
 
@@ -97,12 +101,12 @@ Stories are discovered automatically - no `shots` array needed.
 
 ```json
 {
-  "baseUrl": "http://localhost:3000",
-  "shots": [
-    { "name": "home", "path": "/" },
-    { "name": "about", "path": "/about" },
-    { "name": "contact", "path": "/contact" }
-  ]
+	"baseUrl": "http://localhost:3000",
+	"shots": [
+		{ "name": "home", "path": "/" },
+		{ "name": "about", "path": "/about" },
+		{ "name": "contact", "path": "/contact" }
+	]
 }
 ```
 
@@ -112,14 +116,14 @@ Each shot requires a `name` (used for the screenshot filename) and `path` (appen
 
 ```json
 {
-  "shots": [
-    {
-      "name": "dashboard",
-      "path": "/dashboard",
-      "waitFor": ".dashboard-loaded",
-      "delay": 500
-    }
-  ]
+	"shots": [
+		{
+			"name": "dashboard",
+			"path": "/dashboard",
+			"waitFor": ".dashboard-loaded",
+			"delay": 500
+		}
+	]
 }
 ```
 
@@ -130,12 +134,12 @@ Each shot requires a `name` (used for the screenshot filename) and `path` (appen
 
 Each example includes these npm scripts:
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start the development server |
-| `npm run pixelguard` | Run the pixelguard CLI directly |
-| `npm run pixelguard:test:visual` | Run visual regression tests |
-| `npm run pixelguard:test:visual:update` | Update baseline screenshots |
+| Script                                  | Description                     |
+| --------------------------------------- | ------------------------------- |
+| `npm run dev`                           | Start the development server    |
+| `npm run pixelguard`                    | Run the pixelguard CLI directly |
+| `npm run pixelguard:test:visual`        | Run visual regression tests     |
+| `npm run pixelguard:test:visual:update` | Update baseline screenshots     |
 
 ## Prerequisites
 
@@ -143,14 +147,14 @@ Before running examples, ensure you have:
 
 1. **Node.js 18+** installed
 2. **Playwright browsers** installed:
-   ```bash
-   npx playwright install chromium
-   ```
+    ```bash
+    npx playwright install chromium
+    ```
 3. **Pixelguard binary** built:
-   ```bash
-   # From the repository root
-   cargo build --release
-   ```
+    ```bash
+    # From the repository root
+    cargo build --release
+    ```
 
 ## Troubleshooting
 
