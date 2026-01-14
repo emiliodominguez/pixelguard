@@ -21,7 +21,24 @@ npx pixelguard test --update
 
 # Run visual regression tests
 npx pixelguard test
+
+# View the report in your browser
+npx pixelguard test --serve
 ```
+
+## Commands
+
+- `pixelguard init` — Auto-detect project type and create config
+- `pixelguard test` — Capture and compare screenshots
+- `pixelguard list` — List configured shots
+
+### Test Options
+
+- `--update` — Update baseline with current screenshots
+- `--ci` — CI mode with JSON output
+- `--filter <pattern>` — Only test matching shots
+- `--serve` — Serve the report in browser after tests
+- `--port <number>` — Port for serving (default: 3333)
 
 ## Requirements
 
