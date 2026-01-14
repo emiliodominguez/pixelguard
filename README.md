@@ -6,9 +6,10 @@ Open-source visual regression testing CLI. Zero config, git-friendly, no backend
 
 - **Zero Config** — Auto-detects Storybook, Next.js, and Vite projects
 - **Git-Friendly** — Screenshots stored in `.pixelguard/`, committed to your repo
-- **Fast** — Written in Rust for blazing performance
+- **Fast** — Written in Rust with parallel screenshot capture
 - **No Backend** — Everything runs locally or in CI
 - **Beautiful Reports** — Static HTML reports that work offline
+- **Extensible** — Plugin system for custom storage, reporters, and notifiers
 
 ## Quick Start
 
@@ -68,6 +69,7 @@ Options:
 - `--update` — Update baseline with current screenshots
 - `--ci` — CI mode with machine-readable JSON output
 - `--filter <pattern>` — Only test shots matching pattern
+- `--config, -c <path>` — Use a custom config file
 - `--verbose` — Show detailed progress
 - `--serve` — Serve the HTML report in browser after completion
 - `--port <number>` — Port for serving the report (default: 3333)
@@ -88,6 +90,25 @@ npx pixelguard list
 ```
 
 Options:
+- `--config, -c <path>` — Use a custom config file
+- `--json` — Output as JSON
+
+### `pixelguard plugins`
+
+List and validate installed plugins.
+
+```bash
+npx pixelguard plugins
+
+# Output:
+# Loaded plugins (2):
+#
+#   ✓ JSON Reporter  Reporter  [generate]
+#   ✓ Slack Notifier Notifier  [notify]
+```
+
+Options:
+- `--config, -c <path>` — Use a custom config file
 - `--json` — Output as JSON
 
 ## Configuration
@@ -105,7 +126,8 @@ Pixelguard uses `pixelguard.config.json` in your project root:
     "height": 720
   },
   "threshold": 0.01,
-  "outputDir": ".pixelguard"
+  "outputDir": ".pixelguard",
+  "concurrency": 4
 }
 ```
 
@@ -123,7 +145,10 @@ All fields are optional with sensible defaults. **Stories are discovered dynamic
 | `viewport.height` | number | `720` | Viewport height in pixels |
 | `threshold` | number | `0.01` | Diff threshold (0.0 to 100.0, percentage) |
 | `outputDir` | string | `.pixelguard` | Directory for screenshots and reports |
+| `concurrency` | number | `4` | Number of screenshots to capture in parallel |
 | `shots` | Shot[] | `[]` | Optional overrides for specific shots |
+| `plugins` | array | `[]` | Plugins to load (see [Plugins](docs/plugins.md)) |
+| `pluginOptions` | object | `{}` | Options for plugins, keyed by plugin name |
 
 ### Shot Overrides
 
@@ -217,6 +242,39 @@ Screenshots are stored in `.pixelguard/`:
 Commit the `baseline/` directory to your repository. The `current/` and `diff/` directories are regenerated on each run.
 
 For large projects, consider using [Git LFS](https://git-lfs.github.com/) for PNG files.
+
+## Plugins
+
+Pixelguard supports plugins for extending functionality:
+
+| Category | Purpose | Examples |
+|----------|---------|----------|
+| **storage** | Remote baseline storage | S3, Cloudflare R2, Azure Blob |
+| **reporter** | Custom report formats | JSON, JUnit XML |
+| **notifier** | Send notifications | Slack, Teams, webhooks |
+| **capture** | Screenshot engine | Puppeteer |
+| **differ** | Image comparison | SSIM |
+
+```json
+{
+  "plugins": ["pixelguard-plugin-slack-notifier"],
+  "pluginOptions": {
+    "pixelguard-plugin-slack-notifier": {
+      "webhookUrl": "https://hooks.slack.com/..."
+    }
+  }
+}
+```
+
+See [Plugins Documentation](docs/plugins.md) for full details.
+
+## Documentation
+
+- [Getting Started](docs/getting-started.md) — Quick setup guide
+- [Configuration](docs/configuration.md) — Full configuration reference
+- [Plugins](docs/plugins.md) — Plugin system and creating plugins
+- [CI Setup](docs/ci-setup.md) — CI/CD integration guide
+- [Troubleshooting](docs/troubleshooting.md) — Common issues and solutions
 
 ## License
 
