@@ -28,6 +28,13 @@ pub struct DiffResult {
     pub removed: Vec<String>,
 }
 
+impl DiffResult {
+    /// Returns true if there are any changes (changed, added, or removed).
+    pub fn has_changes(&self) -> bool {
+        !self.changed.is_empty() || !self.added.is_empty() || !self.removed.is_empty()
+    }
+}
+
 /// A shot with visual differences.
 #[derive(Debug, Clone)]
 pub struct ChangedShot {
@@ -114,21 +121,17 @@ pub fn diff_images<P: AsRef<Path>>(
     }
 
     // Find added shots (in current but not baseline)
-    for name in &current_shots {
-        if !baseline_shots.contains(name) {
-            result.added.push(name.clone());
-        }
-    }
+    result
+        .added
+        .extend(current_shots.difference(&baseline_shots).cloned());
 
     // Find removed shots (in baseline but not current)
-    for name in &baseline_shots {
-        if !current_shots.contains(name) {
-            result.removed.push(name.clone());
-        }
-    }
+    result
+        .removed
+        .extend(baseline_shots.difference(&current_shots).cloned());
 
     // Get differ plugin if available
-    let differ_plugin = plugin_registry.and_then(|r| r.get_override(PluginCategory::Differ));
+    let differ_plugin = plugin_registry.and_then(|r| r.get(PluginCategory::Differ));
 
     // Compare shots that exist in both
     for name in current_shots.intersection(&baseline_shots) {
@@ -388,6 +391,56 @@ mod tests {
         assert!(result.changed.is_empty());
         assert!(result.added.is_empty());
         assert!(result.removed.is_empty());
+    }
+
+    #[test]
+    fn has_changes_returns_false_for_empty_result() {
+        let result = DiffResult {
+            unchanged: vec!["test".to_string()],
+            changed: Vec::new(),
+            added: Vec::new(),
+            removed: Vec::new(),
+        };
+        assert!(!result.has_changes());
+    }
+
+    #[test]
+    fn has_changes_returns_true_when_changed() {
+        let result = DiffResult {
+            unchanged: Vec::new(),
+            changed: vec![ChangedShot {
+                name: "test".to_string(),
+                baseline_path: PathBuf::new(),
+                current_path: PathBuf::new(),
+                diff_path: PathBuf::new(),
+                diff_percentage: 1.0,
+            }],
+            added: Vec::new(),
+            removed: Vec::new(),
+        };
+        assert!(result.has_changes());
+    }
+
+    #[test]
+    fn has_changes_returns_true_when_added() {
+        let result = DiffResult {
+            unchanged: Vec::new(),
+            changed: Vec::new(),
+            added: vec!["new".to_string()],
+            removed: Vec::new(),
+        };
+        assert!(result.has_changes());
+    }
+
+    #[test]
+    fn has_changes_returns_true_when_removed() {
+        let result = DiffResult {
+            unchanged: Vec::new(),
+            changed: Vec::new(),
+            added: Vec::new(),
+            removed: vec!["old".to_string()],
+        };
+        assert!(result.has_changes());
     }
 
     #[test]
