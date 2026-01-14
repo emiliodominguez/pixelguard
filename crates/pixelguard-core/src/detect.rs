@@ -184,7 +184,21 @@ async fn detect_storybook() -> Option<ProjectType> {
     None
 }
 
-async fn fetch_storybook_stories(base_url: &str) -> Option<Vec<Shot>> {
+/// Fetches stories from a running Storybook server.
+///
+/// Tries the index.json endpoint first (Storybook 7+), then falls back to
+/// stories.json for older versions.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use pixelguard_core::detect::fetch_storybook_stories;
+///
+/// async fn example() -> Option<Vec<pixelguard_core::config::Shot>> {
+///     fetch_storybook_stories("http://localhost:6006").await
+/// }
+/// ```
+pub async fn fetch_storybook_stories(base_url: &str) -> Option<Vec<Shot>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
