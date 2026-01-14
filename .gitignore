@@ -1,0 +1,39 @@
+# Rust
+/target/
+Cargo.lock
+
+# Node
+node_modules/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Pixelguard output (for development)
+# Note: Users should commit .pixelguard/baseline/ to their repos
+.pixelguard/current/
+.pixelguard/diff/
+.pixelguard/report.html
+
+# Environment
+.env
+.env.local

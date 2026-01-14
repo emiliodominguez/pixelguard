@@ -1,0 +1,45 @@
+{
+	"name": "pixelguard",
+	"version": "0.1.0",
+	"description": "Visual regression testing CLI - Percy/Chromatic for people who don't want to pay $300/mo",
+	"keywords": [
+		"visual-regression",
+		"screenshot",
+		"testing",
+		"storybook",
+		"playwright",
+		"diff"
+	],
+	"homepage": "https://github.com/pixelguard/pixelguard",
+	"bugs": {
+		"url": "https://github.com/pixelguard/pixelguard/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/pixelguard/pixelguard.git"
+	},
+	"license": "MIT",
+	"author": "Pixelguard Contributors",
+	"bin": {
+		"pixelguard": "./scripts/run.js"
+	},
+	"files": [
+		"scripts/",
+		"bin/"
+	],
+	"scripts": {
+		"postinstall": "node scripts/postinstall.js"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"os": [
+		"darwin",
+		"linux",
+		"win32"
+	],
+	"cpu": [
+		"x64",
+		"arm64"
+	]
+}
