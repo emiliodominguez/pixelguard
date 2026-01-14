@@ -28,6 +28,7 @@ Thumbs.db
 *.dylib
 
 # Framework build caches
+storybook-static/
 .astro/
 .next/
 dist/
