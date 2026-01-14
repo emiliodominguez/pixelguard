@@ -1,0 +1,16 @@
+{
+	"$schema": "../../schemas/pixelguard.config.schema.json",
+	"baseUrl": "http://localhost:5173",
+	"viewports": [
+		{ "name": "desktop", "width": 1920, "height": 1080 },
+		{ "name": "tablet", "width": 768, "height": 1024 },
+		{ "name": "mobile", "width": 375, "height": 667 }
+	],
+	"threshold": 0.01,
+	"outputDir": ".pixelguard",
+	"shots": [
+		{ "name": "home", "path": "/" },
+		{ "name": "features", "path": "/features" },
+		{ "name": "pricing", "path": "/pricing" }
+	]
+}
