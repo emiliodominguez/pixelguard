@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+storybook-static/
+
+# Pixelguard output (except baseline)
+.pixelguard/current/
+.pixelguard/diff/
+.pixelguard/report.html
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (use npm ci in CI)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
