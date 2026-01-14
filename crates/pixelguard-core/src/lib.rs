@@ -35,9 +35,11 @@ pub mod detect;
 pub mod diff;
 pub mod plugins;
 pub mod report;
+pub mod storage;
 
 pub use capture::capture_screenshots;
 pub use config::Config;
 pub use detect::{detect_project_type, fetch_storybook_stories, ProjectType};
 pub use diff::{diff_images, DiffResult};
 pub use report::generate_report;
+pub use storage::Storage;
