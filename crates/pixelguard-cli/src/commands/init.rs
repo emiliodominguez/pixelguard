@@ -14,6 +14,10 @@ pub struct InitArgs {
     /// Re-initialize even if config already exists
     #[arg(long)]
     force: bool,
+
+    /// Port to use for dev server detection
+    #[arg(long, short)]
+    port: Option<u16>,
 }
 
 /// Runs the init command.
@@ -30,7 +34,7 @@ pub async fn run(args: InitArgs) -> Result<()> {
 
     println!("Detecting project type...");
 
-    let project = detect_project_type(&working_dir).await?;
+    let project = detect_project_type(&working_dir, args.port).await?;
 
     let config = match &project {
         ProjectType::Storybook { base_url, stories } => {
@@ -45,27 +49,15 @@ pub async fn run(args: InitArgs) -> Result<()> {
             }
         }
 
-        ProjectType::NextJs { base_url, routes } => {
-            println!("\u{2713} Found Next.js at {}", base_url);
-            println!("\u{2713} Discovered {} routes", routes.len());
-
-            Config {
-                source: "nextjs".to_string(),
-                base_url: base_url.clone(),
-                shots: routes.clone(),
-                ..Default::default()
-            }
-        }
-
-        ProjectType::Vite { base_url } => {
-            println!("\u{2713} Found Vite at {}", base_url);
+        ProjectType::DevServer { base_url } => {
+            println!("\u{2713} Found dev server at {}", base_url);
             println!(
-                "  Note: Vite projects require manual shot configuration.\n  \
-                 Add shots to 'pixelguard.config.json'."
+                "  Note: Add shots to 'pixelguard.config.json' to specify\n  \
+                 which pages or components to capture."
             );
 
             Config {
-                source: "vite".to_string(),
+                source: "manual".to_string(),
                 base_url: base_url.clone(),
                 ..Default::default()
             }
@@ -73,8 +65,8 @@ pub async fn run(args: InitArgs) -> Result<()> {
 
         ProjectType::Unknown => {
             println!(
-                "Could not auto-detect project type.\n\
-                 Creating minimal config — you'll need to add shots manually."
+                "Could not detect a running dev server.\n\
+                 Creating minimal config — you'll need to add baseUrl and shots manually."
             );
 
             Config::default()
@@ -94,13 +86,22 @@ pub async fn run(args: InitArgs) -> Result<()> {
     info!("Initialized Pixelguard in {:?}", working_dir);
 
     println!("\nNext steps:");
-    if project.is_known() {
-        println!("  1. Run: npx pixelguard test");
-        println!("  2. Commit .pixelguard/ as your baseline");
-    } else {
-        println!("  1. Edit pixelguard.config.json to add your shots");
-        println!("  2. Run: npx pixelguard test");
-        println!("  3. Commit .pixelguard/ as your baseline");
+    match &project {
+        ProjectType::Storybook { .. } => {
+            println!("  1. Run: npx pixelguard test");
+            println!("  2. Commit .pixelguard/ as your baseline");
+        }
+        ProjectType::DevServer { .. } => {
+            println!("  1. Edit pixelguard.config.json to add your shots");
+            println!("  2. Run: npx pixelguard test");
+            println!("  3. Commit .pixelguard/ as your baseline");
+        }
+        ProjectType::Unknown => {
+            println!("  1. Start your dev server");
+            println!("  2. Edit pixelguard.config.json to add baseUrl and shots");
+            println!("  3. Run: npx pixelguard test");
+            println!("  4. Commit .pixelguard/ as your baseline");
+        }
     }
 
     Ok(())

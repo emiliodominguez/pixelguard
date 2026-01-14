@@ -29,13 +29,12 @@ Run the init command in your project root:
 npx pixelguard init
 ```
 
-Pixelguard will automatically detect your project type:
+Pixelguard will automatically detect your project:
 
-- **Storybook**: Discovers all stories from `/index.json`
-- **Next.js**: Scans `app/` and `pages/` directories for routes
-- **Vite**: Detects the dev server (manual shot configuration required)
+- **Storybook**: Auto-discovers all stories from `/index.json`
+- **Other projects**: Detects the dev server, you configure shots manually
 
-Example output:
+Example output for Storybook:
 
 ```
 Detecting project type...
@@ -48,6 +47,21 @@ Next steps:
   2. Commit .pixelguard/ as your baseline
 ```
 
+For non-Storybook projects:
+
+```
+Detecting project type...
+✓ Found dev server at http://localhost:3000
+  Note: Add shots to 'pixelguard.config.json' to specify
+  which pages or components to capture.
+✓ Created pixelguard.config.json
+
+Next steps:
+  1. Edit pixelguard.config.json to add your shots
+  2. Run: npx pixelguard test
+  3. Commit .pixelguard/ as your baseline
+```
+
 ### 2. Start Your Dev Server
 
 Before running tests, make sure your development server is running:
@@ -56,7 +70,7 @@ Before running tests, make sure your development server is running:
 # Storybook
 npm run storybook
 
-# Next.js
+# Any other project
 npm run dev
 
 # Vite
@@ -151,8 +165,12 @@ your-project/
 Initialize Pixelguard in the current project.
 
 ```bash
-npx pixelguard init [--force]
+npx pixelguard init [--force] [--port <number>]
 ```
+
+Options:
+- `--force` - Re-initialize even if config exists
+- `--port, -p <number>` - Port to use for dev server detection
 
 ### `pixelguard test`
 

@@ -21,6 +21,10 @@ pub struct Config {
     #[serde(default)]
     pub base_url: String,
 
+    /// Port to use for dev server detection (overrides default port probing)
+    #[serde(default)]
+    pub port: Option<u16>,
+
     /// Glob patterns to include
     #[serde(default = "default_include")]
     pub include: Vec<String>,
@@ -165,6 +169,7 @@ impl Default for Config {
         Self {
             source: String::new(),
             base_url: String::new(),
+            port: None,
             include: default_include(),
             exclude: Vec::new(),
             viewport: Viewport::default(),
