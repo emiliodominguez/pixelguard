@@ -8,10 +8,11 @@
     "build": "vite build",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "pixelguard:init": "pixelguard init",
-    "pixelguard:test": "pixelguard test",
-    "pixelguard:update": "pixelguard test --update",
-    "pixelguard:list": "pixelguard list"
+    "pixelguard": "../../target/release/pixelguard",
+    "pixelguard:init": "npm run pixelguard -- init",
+    "pixelguard:test": "npm run pixelguard -- test",
+    "pixelguard:update": "npm run pixelguard -- test --update",
+    "pixelguard:list": "npm run pixelguard -- list"
   },
   "dependencies": {
     "react": "^18.2.0",

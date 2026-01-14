@@ -86,24 +86,36 @@ pub async fn capture_screenshots_in_dir<P: AsRef<Path>>(
     }
 
     // Generate and execute Playwright script
-    let script = generate_playwright_script(config, &output_dir)?;
+    let script = generate_playwright_script(config, &output_dir, working_dir)?;
     let result = execute_playwright_script(&script, working_dir).await?;
 
     Ok(result)
 }
 
 /// Generates a Playwright script for capturing screenshots.
-fn generate_playwright_script(config: &Config, output_dir: &Path) -> Result<String> {
+fn generate_playwright_script(
+    config: &Config,
+    output_dir: &Path,
+    working_dir: &Path,
+) -> Result<String> {
     let output_dir_str = output_dir
         .to_str()
         .context("Output directory path is not valid UTF-8")?
+        .replace('\\', "/");
+
+    let working_dir_str = working_dir
+        .to_str()
+        .context("Working directory path is not valid UTF-8")?
         .replace('\\', "/");
 
     let shots_json = serde_json::to_string(&config.shots)?;
 
     let script = format!(
         r#"
-const {{ chromium }} = require('playwright');
+// Resolve playwright from the project's node_modules
+const path = require('path');
+const playwrightPath = require.resolve('playwright', {{ paths: [{working_dir}] }});
+const {{ chromium }} = require(playwrightPath);
 
 const config = {{
     baseUrl: {base_url},
@@ -174,6 +186,7 @@ captureScreenshots().catch(error => {{
     process.exit(1);
 }});
 "#,
+        working_dir = serde_json::to_string(&working_dir_str)?,
         base_url = serde_json::to_string(&config.base_url)?,
         width = config.viewport.width,
         height = config.viewport.height,
@@ -338,7 +351,7 @@ mod tests {
             ..Default::default()
         };
 
-        let script = generate_playwright_script(&config, Path::new("/tmp/output")).unwrap();
+        let script = generate_playwright_script(&config, Path::new("/tmp/output"), Path::new("/project")).unwrap();
 
         assert!(script.contains("chromium"));
         assert!(script.contains("http://localhost:6006"));
