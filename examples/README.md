@@ -6,9 +6,9 @@ This directory contains example projects demonstrating how to use Pixelguard wit
 
 | Example | Framework | Port | Auto-Discovery |
 |---------|-----------|------|----------------|
-| [storybook-react](./storybook-react) | Storybook + React | 6006 | Yes (stories) |
+| [storybook-vite](./storybook-vite) | Storybook 8 + Vite | 6006 | Yes (stories) |
 | [nextjs-app](./nextjs-app) | Next.js 15 | 3000 | No (manual shots) |
-| [vite-react](./vite-react) | Vite 6 + React 19 | 5173 | No (manual shots) |
+| [vite-react](./vite-react) | Vite 7 + React 19 | 5173 | No (manual shots) |
 | [astro-site](./astro-site) | Astro 5 | 4321 | No (manual shots) |
 
 ## Running an Example
@@ -23,15 +23,16 @@ cd examples/<example-name>
 npm install
 
 # Start the dev server
-npm run dev
+npm run dev  # or `npm run storybook` for storybook-vite
 
 # In another terminal, run Pixelguard
-npx pixelguard test
+npm run pixelguard:test:visual:update  # Create baseline
+npm run pixelguard:test:visual         # Run tests
 ```
 
 ## Storybook Example
 
-The `storybook-react` example demonstrates Pixelguard's automatic story discovery. When you run `pixelguard init`, it will:
+The `storybook-vite` example demonstrates Pixelguard's automatic story discovery. When you run `pixelguard init`, it will:
 
 1. Detect the `.storybook/` directory
 2. Connect to Storybook at `http://localhost:6006`
@@ -39,13 +40,13 @@ The `storybook-react` example demonstrates Pixelguard's automatic story discover
 4. Auto-generate shots for each story
 
 ```bash
-cd examples/storybook-react
+cd examples/storybook-vite
 npm install
 npm run storybook  # Start Storybook
 
 # In another terminal
-npx pixelguard init  # Auto-discovers stories
-npx pixelguard test --update  # Create baseline
+npm run pixelguard:test:visual:update  # Create baseline
+npm run pixelguard:test:visual         # Run tests
 ```
 
 ## Framework Examples
@@ -73,7 +74,8 @@ npm install
 npm run dev  # Start the dev server
 
 # In another terminal
-npx pixelguard test --update  # Create baseline
+npm run pixelguard:test:visual:update  # Create baseline
+npm run pixelguard:test:visual         # Run tests
 ```
 
 ## Creating Your Own Config
