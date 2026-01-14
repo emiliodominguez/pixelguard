@@ -1,8 +1,6 @@
 # Pixelguard
 
-> Percy/Chromatic for people who don't want to pay $300/mo or give their screenshots to a vendor.
-
-Pixelguard is an open-source visual regression testing CLI tool. Zero config by default, git-friendly storage, and no backend required.
+Open-source visual regression testing CLI. Zero config, git-friendly, no backend required.
 
 ## Installation
 

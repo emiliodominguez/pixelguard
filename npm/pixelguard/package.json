@@ -1,7 +1,7 @@
 {
 	"name": "pixelguard",
 	"version": "0.1.0",
-	"description": "Visual regression testing CLI - Percy/Chromatic for people who don't want to pay $300/mo",
+	"description": "Open-source visual regression testing CLI",
 	"keywords": [
 		"visual-regression",
 		"screenshot",

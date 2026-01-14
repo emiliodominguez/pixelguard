@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Commit message hook for Pixelguard
+# Validates commit messages against conventional commits format
+
+npx --no -- commitlint --edit "$1"

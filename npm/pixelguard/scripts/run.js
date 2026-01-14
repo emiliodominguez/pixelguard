@@ -1,19 +1,49 @@
 #!/usr/bin/env node
 
 /**
- * Runner script for Pixelguard npm package.
+ * @fileoverview Runner script for Pixelguard npm package.
  *
- * Executes the prebuilt binary with the provided arguments.
+ * Locates and executes the prebuilt Pixelguard binary, forwarding all
+ * command-line arguments. First checks the package's bin directory,
+ * then falls back to searching the system PATH.
+ *
+ * @module run
+ * @author Pixelguard Contributors
+ * @license MIT
  */
 
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+/**
+ * Gets the binary filename for the current platform.
+ *
+ * @returns {string} Binary filename ("pixelguard" or "pixelguard.exe" on Windows)
+ * @example
+ * // On Windows
+ * getBinaryName() // => "pixelguard.exe"
+ * // On Unix
+ * getBinaryName() // => "pixelguard"
+ */
 function getBinaryName() {
 	return process.platform === "win32" ? "pixelguard.exe" : "pixelguard";
 }
 
+/**
+ * Searches for the Pixelguard binary in known locations.
+ *
+ * Search order:
+ * 1. Package bin directory (npm/pixelguard/bin/)
+ * 2. System PATH directories
+ *
+ * @returns {string|null} Absolute path to the binary, or null if not found
+ * @example
+ * const binary = findBinary();
+ * if (binary) {
+ *   console.log(`Found binary at: ${binary}`);
+ * }
+ */
 function findBinary() {
 	const binaryName = getBinaryName();
 
@@ -35,6 +65,20 @@ function findBinary() {
 	return null;
 }
 
+/**
+ * Main entry point for the runner script.
+ *
+ * Finds the Pixelguard binary and spawns it as a child process,
+ * forwarding all command-line arguments. Inherits stdio from the
+ * parent process for seamless terminal interaction.
+ *
+ * Exit codes:
+ * - 0: Success (or binary exit code 0)
+ * - 1: Binary not found or execution error
+ * - Other: Forwarded from the binary process
+ *
+ * @returns {void}
+ */
 function main() {
 	const binaryPath = findBinary();
 

@@ -1,0 +1,24 @@
+{
+  "name": "pixelguard-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Visual regression testing CLI - workspace root",
+  "scripts": {
+    "prepare": "husky",
+    "lint:js": "prettier --check 'npm/**/*.js'",
+    "format:js": "prettier --write 'npm/**/*.js'",
+    "lint:rust": "cargo fmt --check && cargo clippy -- -D warnings",
+    "format:rust": "cargo fmt",
+    "test": "cargo test",
+    "build": "cargo build --release"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0",
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

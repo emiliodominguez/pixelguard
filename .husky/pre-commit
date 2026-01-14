@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# Pre-commit hook for Pixelguard
+# Runs linting and formatting checks before allowing commits
+
+echo "Running pre-commit checks..."
+
+# Check Rust formatting
+echo "Checking Rust formatting..."
+cargo fmt --check
+if [ $? -ne 0 ]; then
+    echo "❌ Rust formatting check failed. Run 'cargo fmt' to fix."
+    exit 1
+fi
+
+# Run Clippy
+echo "Running Clippy..."
+cargo clippy -- -D warnings
+if [ $? -ne 0 ]; then
+    echo "❌ Clippy found warnings. Please fix them before committing."
+    exit 1
+fi
+
+# Check JavaScript formatting (if prettier is available)
+if command -v npx &> /dev/null; then
+    echo "Checking JavaScript formatting..."
+    npx prettier --check 'npm/**/*.js' 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "❌ JavaScript formatting check failed. Run 'npm run format:js' to fix."
+        exit 1
+    fi
+fi
+
+echo "✅ All pre-commit checks passed!"
