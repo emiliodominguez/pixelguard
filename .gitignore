@@ -27,6 +27,11 @@ Thumbs.db
 *.so
 *.dylib
 
+# Framework build caches
+.astro/
+.next/
+dist/
+
 # Test artifacts
 *.profraw
 *.profdata
