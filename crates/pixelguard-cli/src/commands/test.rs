@@ -5,11 +5,17 @@
 //! Supports plugins for capture, diff, report, and notification.
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use axum::Router;
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use clap::Args;
 use pixelguard_core::{
     capture::{capture_screenshots_in_dir, update_baseline},
@@ -425,12 +431,26 @@ fn convert_diff_result(diff_result: &DiffResult) -> ReporterDiffResult {
     }
 }
 
-/// Serves the report directory on a local HTTP server.
+/// State for the serve endpoints.
+#[derive(Clone)]
+struct ServeState {
+    output_dir: PathBuf,
+}
+
+/// Serves the report directory on a local HTTP server with save endpoint.
 async fn serve_report(output_dir: &Path, port: u16) -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let url = format!("http://localhost:{}/report.html", port);
 
-    let app = Router::new().fallback_service(ServeDir::new(output_dir));
+    let state = Arc::new(ServeState {
+        output_dir: output_dir.to_path_buf(),
+    });
+
+    let app = Router::new()
+        .route("/api/decisions", post(save_decisions))
+        .route("/api/decisions", get(load_decisions))
+        .with_state(state)
+        .fallback_service(ServeDir::new(output_dir));
 
     println!("Serving report at: {}", url);
     println!("Press Ctrl+C to stop the server\n");
@@ -444,6 +464,42 @@ async fn serve_report(output_dir: &Path, port: u16) -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Handler to save decisions to the output directory.
+async fn save_decisions(
+    State(state): State<Arc<ServeState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<StatusCode, StatusCode> {
+    let decisions_path = state.output_dir.join("decisions.json");
+
+    let content = serde_json::to_string_pretty(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    std::fs::write(&decisions_path, content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
+}
+
+/// Handler to load decisions from the output directory.
+async fn load_decisions(
+    State(state): State<Arc<ServeState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let decisions_path = state.output_dir.join("decisions.json");
+
+    if !decisions_path.exists() {
+        return Ok(Json(serde_json::json!({
+            "version": "1.0",
+            "exportedAt": "",
+            "decisions": {}
+        })));
+    }
+
+    let content = std::fs::read_to_string(&decisions_path).map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let data: serde_json::Value =
+        serde_json::from_str(&content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(data))
 }
 
 /// Discovers shots dynamically from the source (e.g., Storybook).

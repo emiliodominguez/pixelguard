@@ -1,6 +1,6 @@
 //! The `apply` command for applying decisions from a JSON file.
 //!
-//! This command reads a decisions.json file (exported from the HTML report)
+//! This command reads a decisions.json file (saved from the HTML report)
 //! and updates the baseline for all approved shots.
 
 use std::collections::HashMap;
@@ -12,12 +12,15 @@ use pixelguard_core::{capture::update_baseline, plugins};
 use serde::Deserialize;
 use tracing::info;
 
+/// Default path for decisions file within the output directory.
+const DEFAULT_DECISIONS_FILE: &str = "decisions.json";
+
 /// Arguments for the apply command.
 #[derive(Args)]
 pub struct ApplyArgs {
-    /// Path to decisions.json file
+    /// Path to decisions.json file (default: .pixelguard/decisions.json)
     #[arg(value_name = "FILE")]
-    decisions_file: PathBuf,
+    decisions_file: Option<PathBuf>,
 
     /// Path to config file (default: pixelguard.config.json)
     #[arg(long, short)]
@@ -59,12 +62,22 @@ struct Decision {
 pub async fn run(args: ApplyArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
+    // Load config first to get output_dir for default decisions path
+    let config = super::load_config(&working_dir, args.config.as_deref())?;
+
+    // Determine decisions file path
+    let decisions_path = args.decisions_file.unwrap_or_else(|| {
+        working_dir
+            .join(&config.output_dir)
+            .join(DEFAULT_DECISIONS_FILE)
+    });
+
     // Load the decisions file
-    let decisions_content = std::fs::read_to_string(&args.decisions_file).with_context(|| {
+    let decisions_content = std::fs::read_to_string(&decisions_path).with_context(|| {
         format!(
             "Could not read decisions file at '{}'. \
-             Export decisions from the HTML report first.",
-            args.decisions_file.display()
+             Make decisions in the HTML report first (click Save).",
+            decisions_path.display()
         )
     })?;
 
@@ -72,8 +85,8 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
         serde_json::from_str(&decisions_content).with_context(|| {
             format!(
                 "Invalid decisions file format in '{}'. \
-                 Make sure this was exported from the Pixelguard report.",
-                args.decisions_file.display()
+                 Make sure this was saved from the Pixelguard report.",
+                decisions_path.display()
             )
         })?;
 
@@ -114,9 +127,6 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
         println!("Run without --dry-run to update the baseline.");
         return Ok(());
     }
-
-    // Load config
-    let config = super::load_config(&working_dir, args.config.as_deref())?;
 
     // Initialize plugins (for storage plugins)
     let plugin_registry = plugins::init_plugins(&config, &working_dir)?;

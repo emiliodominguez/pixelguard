@@ -48,6 +48,9 @@ enum Commands {
 
     /// Interactively review visual diffs and update baseline
     Review(commands::review::ReviewArgs),
+
+    /// Serve an existing report for review (without re-running tests)
+    Serve(commands::serve::ServeArgs),
 }
 
 #[tokio::main]
@@ -75,5 +78,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Validate(args) => commands::validate::run(args).await,
         Commands::Apply(args) => commands::apply::run(args).await,
         Commands::Review(args) => commands::review::run(args).await,
+        Commands::Serve(args) => commands::serve::run(args).await,
     }
 }

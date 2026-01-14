@@ -177,18 +177,20 @@ npx pixelguard review
 
 This lets you step through each changed shot and approve, reject, or skip.
 
-#### Browser-Based Workflow
+#### Browser-Based Workflow (Recommended)
 
-1. Run tests and review changes in the browser
-2. Click **Approve** or **Reject** on each changed shot
-3. Click **Export** to download `pixelguard-decisions.json`
+1. Run tests: `npx pixelguard test`
+2. Serve the report: `npx pixelguard serve`
+3. Click **Approve** or **Reject** on each changed shot (auto-saves)
 4. Apply the decisions:
 
 ```bash
-npx pixelguard apply pixelguard-decisions.json
+npx pixelguard apply
 git add .pixelguard/
 git commit -m "Apply reviewed visual changes"
 ```
+
+Decisions are automatically saved to `.pixelguard/decisions.json` when using `serve`.
 
 ## Project Structure
 
@@ -290,10 +292,10 @@ This command checks:
 
 ### `pixelguard apply`
 
-Apply decisions from an exported JSON file to update the baseline.
+Apply decisions from the HTML report to update the baseline.
 
 ```bash
-npx pixelguard apply <decisions-file> [options]
+npx pixelguard apply [decisions-file] [options]
 ```
 
 Options:
@@ -303,11 +305,14 @@ Options:
 Example:
 
 ```bash
-# Apply decisions exported from the HTML report
-npx pixelguard apply pixelguard-decisions.json
+# Apply saved decisions (reads from .pixelguard/decisions.json)
+npx pixelguard apply
 
 # Preview what would be updated
-npx pixelguard apply pixelguard-decisions.json --dry-run
+npx pixelguard apply --dry-run
+
+# Apply from a specific file
+npx pixelguard apply path/to/decisions.json
 ```
 
 ### `pixelguard review`
@@ -328,6 +333,20 @@ This command:
 2. Prompts you to approve, reject, or skip each changed shot
 3. Shows a summary of your decisions
 4. Optionally updates the baseline with approved changes
+
+### `pixelguard serve`
+
+Serve an existing report for browser-based review without re-running tests.
+
+```bash
+npx pixelguard serve [options]
+```
+
+Options:
+- `--config, -c <path>` - Use a custom config file
+- `--port <number>` - Port for serving the report (default: 3333)
+
+This is useful when you want to review a report from an earlier test run without needing your dev server running. Decisions are automatically saved to disk as you approve/reject.
 
 ## Generated Files
 
