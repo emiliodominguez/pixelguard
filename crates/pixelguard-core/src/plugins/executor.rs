@@ -174,7 +174,8 @@ fn run_node_script(script: &str, working_dir: &Path) -> Result<PluginResult> {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.is_empty() {
-        debug!("Plugin stderr: {}", stderr);
+        // Print stderr directly to user's terminal (plugins use this for output)
+        eprint!("{}", stderr);
     }
 
     // Try to parse stdout as JSON first
