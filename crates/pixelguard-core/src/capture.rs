@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::plugins::PluginRegistry;
@@ -112,6 +112,9 @@ fn generate_playwright_script(
 
     let shots_json = serde_json::to_string(&config.shots)?;
 
+    let viewports = config.effective_viewports();
+    let viewports_json = serde_json::to_string(&viewports)?;
+
     let script = format!(
         r#"
 // Resolve playwright from the project's node_modules
@@ -121,19 +124,34 @@ const {{ chromium }} = require(playwrightPath);
 
 const config = {{
     baseUrl: {base_url},
-    viewport: {{ width: {width}, height: {height} }},
+    viewports: {viewports},
     outputDir: {output_dir},
     shots: {shots},
     concurrency: {concurrency}
 }};
 
-// Capture a single screenshot
-async function captureOne(context, shot, results) {{
+// Generate filename for a shot+viewport combination
+function getFilename(shotName, viewportName) {{
+    if (viewportName === 'default') {{
+        return `${{shotName}}.png`;
+    }}
+    return `${{shotName}}@${{viewportName}}.png`;
+}}
+
+// Capture a single screenshot at a specific viewport
+async function captureOne(browser, shot, viewport, results) {{
+    const context = await browser.newContext({{
+        viewport: {{ width: viewport.width, height: viewport.height }},
+        deviceScaleFactor: 1
+    }});
     const page = await context.newPage();
+
+    const filename = getFilename(shot.name, viewport.name);
+    const displayName = viewport.name === 'default' ? shot.name : `${{shot.name}}@${{viewport.name}}`;
 
     try {{
         const url = config.baseUrl + shot.path;
-        console.error(`Capturing: ${{shot.name}}`);
+        console.error(`Capturing: ${{displayName}}`);
 
         await page.goto(url, {{
             waitUntil: 'networkidle',
@@ -148,51 +166,62 @@ async function captureOne(context, shot, results) {{
             await new Promise(resolve => setTimeout(resolve, shot.delay));
         }}
 
-        const screenshotPath = `${{config.outputDir}}/${{shot.name}}.png`;
+        const screenshotPath = `${{config.outputDir}}/${{filename}}`;
         await page.screenshot({{
             path: screenshotPath,
             fullPage: false
         }});
 
         results.captured.push({{
-            name: shot.name,
+            name: displayName,
             path: screenshotPath
         }});
     }} catch (error) {{
         results.failed.push({{
-            name: shot.name,
+            name: displayName,
             error: error.message
         }});
-        console.error(`Failed to capture ${{shot.name}}: ${{error.message}}`);
+        console.error(`Failed to capture ${{displayName}}: ${{error.message}}`);
     }} finally {{
         await page.close();
+        await context.close();
     }}
 }}
 
-// Process shots in batches for parallel capture
-async function processBatch(context, shots, results) {{
-    await Promise.all(shots.map(shot => captureOne(context, shot, results)));
+// Build list of all shot+viewport combinations
+function buildCaptureList(shots, viewports) {{
+    const captureList = [];
+    for (const shot of shots) {{
+        for (const viewport of viewports) {{
+            captureList.push({{ shot, viewport }});
+        }}
+    }}
+    return captureList;
+}}
+
+// Process items in batches for parallel capture
+async function processBatch(browser, items, results) {{
+    await Promise.all(items.map(item => captureOne(browser, item.shot, item.viewport, results)));
 }}
 
 async function captureScreenshots() {{
     const results = {{ captured: [], failed: [] }};
 
     const browser = await chromium.launch({{ headless: true }});
-    const context = await browser.newContext({{
-        viewport: config.viewport,
-        deviceScaleFactor: 1
-    }});
 
     try {{
-        // Split shots into batches based on concurrency
+        // Build list of all shot+viewport combinations
+        const captureList = buildCaptureList(config.shots, config.viewports);
+
+        // Split into batches based on concurrency
         const batches = [];
-        for (let i = 0; i < config.shots.length; i += config.concurrency) {{
-            batches.push(config.shots.slice(i, i + config.concurrency));
+        for (let i = 0; i < captureList.length; i += config.concurrency) {{
+            batches.push(captureList.slice(i, i + config.concurrency));
         }}
 
-        // Process batches sequentially, shots within batch in parallel
+        // Process batches sequentially, items within batch in parallel
         for (const batch of batches) {{
-            await processBatch(context, batch, results);
+            await processBatch(browser, batch, results);
         }}
     }} finally {{
         await browser.close();
@@ -208,8 +237,7 @@ captureScreenshots().catch(error => {{
 "#,
         working_dir = serde_json::to_string(&working_dir_str)?,
         base_url = serde_json::to_string(&config.base_url)?,
-        width = config.viewport.width,
-        height = config.viewport.height,
+        viewports = viewports_json,
         output_dir = serde_json::to_string(&output_dir_str)?,
         shots = shots_json,
         concurrency = config.concurrency,
@@ -345,8 +373,18 @@ pub fn update_baseline<P: AsRef<Path>>(
     // Copy all PNG files from current to baseline
     for entry in current_files {
         let path = entry.path();
-        let filename = path.file_name().unwrap().to_string_lossy();
-        let name = path.file_stem().unwrap().to_string_lossy();
+
+        let Some(filename) = path.file_name() else {
+            warn!("Skipping entry with no filename: {:?}", path);
+            continue;
+        };
+        let filename = filename.to_string_lossy();
+
+        let Some(name) = path.file_stem() else {
+            warn!("Skipping entry with no file stem: {:?}", path);
+            continue;
+        };
+        let name = name.to_string_lossy();
 
         let current_path = format!("current/{}", filename);
         let baseline_path = format!("baseline/{}", filename);
