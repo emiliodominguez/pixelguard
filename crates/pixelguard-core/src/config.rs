@@ -41,6 +41,10 @@ pub struct Config {
     #[serde(default = "default_output_dir")]
     pub output_dir: String,
 
+    /// Number of concurrent screenshot captures (default: 4)
+    #[serde(default = "default_concurrency")]
+    pub concurrency: usize,
+
     /// List of shots to capture
     #[serde(default)]
     pub shots: Vec<Shot>,
@@ -135,6 +139,10 @@ fn default_output_dir() -> String {
     ".pixelguard".to_string()
 }
 
+fn default_concurrency() -> usize {
+    4
+}
+
 fn default_viewport_width() -> u32 {
     1280
 }
@@ -162,6 +170,7 @@ impl Default for Config {
             viewport: Viewport::default(),
             threshold: default_threshold(),
             output_dir: default_output_dir(),
+            concurrency: default_concurrency(),
             shots: Vec::new(),
             plugins: Vec::new(),
             plugin_options: HashMap::new(),
