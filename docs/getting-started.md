@@ -209,6 +209,25 @@ Options:
 - `--config, -c <path>` - Use a custom config file
 - `--json` - Output in JSON format
 
+### `pixelguard validate`
+
+Validate environment prerequisites before running tests.
+
+```bash
+npx pixelguard validate [options]
+```
+
+Options:
+- `--config, -c <path>` - Use a custom config file
+- `--json` - Output in JSON format
+- `--skip-url-check` - Skip checking if base URL is reachable
+
+This command checks:
+- Configuration file validity
+- Node.js installation
+- Playwright installation
+- Base URL reachability (when configured)
+
 ## Next Steps
 
 - [Configuration Reference](./configuration.md) - Customize your setup

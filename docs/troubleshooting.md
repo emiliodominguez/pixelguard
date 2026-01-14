@@ -4,6 +4,14 @@ Common issues and solutions when using Pixelguard.
 
 ## Installation Issues
 
+First, run the validate command to diagnose common issues:
+
+```bash
+npx pixelguard validate
+```
+
+This checks Node.js, Playwright, and configuration validity.
+
 ### "Cannot find module 'playwright'"
 
 Playwright is not installed. Install it with:
@@ -243,9 +251,10 @@ Check that the image files exist in `.pixelguard/baseline/`, `.pixelguard/curren
 
 If your issue isn't listed here:
 
-1. Check [GitHub Issues](https://github.com/emiliodominguez/pixelguard/issues)
-2. Run with `--verbose` for detailed logs
-3. Open a new issue with:
+1. Run `npx pixelguard validate` to check your environment
+2. Check [GitHub Issues](https://github.com/emiliodominguez/pixelguard/issues)
+3. Run with `--verbose` for detailed logs
+4. Open a new issue with:
    - Pixelguard version
    - Node.js version
    - Operating system
