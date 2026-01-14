@@ -39,37 +39,26 @@ pub enum ProjectType {
 
 /// Storybook index.json format (Storybook 7+)
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct StorybookIndex {
-    v: Option<u32>,
     entries: Option<std::collections::HashMap<String, StorybookEntry>>,
 }
 
 /// Storybook stories.json format (older versions)
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct StorybookStories {
-    v: Option<u32>,
     stories: Option<std::collections::HashMap<String, StorybookStory>>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct StorybookEntry {
     id: String,
-    name: String,
-    title: String,
     #[serde(rename = "type")]
     entry_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct StorybookStory {
     id: String,
-    name: String,
-    title: String,
-    kind: Option<String>,
 }
 
 impl ProjectType {
@@ -324,7 +313,9 @@ mod tests {
     #[tokio::test]
     async fn detect_returns_unknown_for_empty_dir() {
         let dir = tempdir().unwrap();
-        let result = detect_project_type(dir.path(), None).await.unwrap();
+        // Use a specific port that's unlikely to have a service running
+        // to avoid flakiness from detecting dev servers on common ports
+        let result = detect_project_type(dir.path(), Some(59999)).await.unwrap();
         assert!(matches!(result, ProjectType::Unknown));
     }
 }
