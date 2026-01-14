@@ -12,6 +12,19 @@ use tracing::debug;
 
 use super::types::{LoadedPlugin, PluginResult};
 
+/// Checks the plugin result for errors and returns a formatted error message.
+fn check_plugin_error(result: &PluginResult, plugin_name: &str, hook_name: &str) -> Result<()> {
+    if !result.success {
+        anyhow::bail!(
+            "Plugin '{}' hook '{}' failed: {}",
+            plugin_name,
+            hook_name,
+            result.error.as_deref().unwrap_or("Unknown error")
+        );
+    }
+    Ok(())
+}
+
 /// Executes a plugin hook with the given input.
 ///
 /// Generates a Node.js script that loads the plugin and calls the specified hook,
@@ -52,15 +65,7 @@ where
 {
     let script = generate_hook_script(plugin, hook_name, input)?;
     let result = run_node_script(&script, working_dir)?;
-
-    if !result.success {
-        anyhow::bail!(
-            "Plugin '{}' hook '{}' failed: {}",
-            plugin.name(),
-            hook_name,
-            result.error.unwrap_or_else(|| "Unknown error".to_string())
-        );
-    }
+    check_plugin_error(&result, plugin.name(), hook_name)?;
 
     let data = result.data.unwrap_or(serde_json::Value::Null);
     serde_json::from_value(data).with_context(|| {
@@ -87,15 +92,7 @@ where
 {
     let script = generate_hook_script(plugin, hook_name, input)?;
     let result = run_node_script(&script, working_dir)?;
-
-    if !result.success {
-        anyhow::bail!(
-            "Plugin '{}' hook '{}' failed: {}",
-            plugin.name(),
-            hook_name,
-            result.error.unwrap_or_else(|| "Unknown error".to_string())
-        );
-    }
+    check_plugin_error(&result, plugin.name(), hook_name)?;
 
     Ok(())
 }
