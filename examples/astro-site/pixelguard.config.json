@@ -1,0 +1,21 @@
+{
+	"baseUrl": "http://localhost:4321",
+	"viewport": {
+		"width": 1280,
+		"height": 720
+	},
+	"shots": [
+		{
+			"name": "home",
+			"path": "/"
+		},
+		{
+			"name": "about",
+			"path": "/about"
+		},
+		{
+			"name": "contact",
+			"path": "/contact"
+		}
+	]
+}
