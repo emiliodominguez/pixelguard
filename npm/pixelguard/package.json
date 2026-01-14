@@ -10,13 +10,13 @@
 		"playwright",
 		"diff"
 	],
-	"homepage": "https://github.com/pixelguard/pixelguard",
+	"homepage": "https://github.com/emiliodominguez/pixelguard",
 	"bugs": {
-		"url": "https://github.com/pixelguard/pixelguard/issues"
+		"url": "https://github.com/emiliodominguez/pixelguard/issues"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/pixelguard/pixelguard.git"
+		"url": "https://github.com/emiliodominguez/pixelguard.git"
 	},
 	"license": "MIT",
 	"author": "Pixelguard Contributors",

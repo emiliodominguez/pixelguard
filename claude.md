@@ -120,6 +120,8 @@ View report: .pixelguard/report.html
 - `--ci` — CI mode (machine-readable output, exit code 1 on diffs)
 - `--filter <pattern>` — Only test shots matching pattern
 - `--verbose` — Show detailed progress
+- `--serve` — Serve the HTML report after completion
+- `--port <number>` — Port for serving the report (default: 3333)
 
 ---
 
@@ -211,7 +213,9 @@ Generate static HTML report:
 2. Changed section with side-by-side images (baseline, current, diff)
 3. Added section with current image only
 4. Removed section with baseline image only
-5. Dark theme, clean UI, no JavaScript required
+5. Dark/light theme with toggle, clean UI
+6. Image zoom modal for detailed inspection
+7. Comparison slider for visual diffs
 
 ---
 
