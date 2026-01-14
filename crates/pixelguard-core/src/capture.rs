@@ -351,7 +351,9 @@ mod tests {
             ..Default::default()
         };
 
-        let script = generate_playwright_script(&config, Path::new("/tmp/output"), Path::new("/project")).unwrap();
+        let script =
+            generate_playwright_script(&config, Path::new("/tmp/output"), Path::new("/project"))
+                .unwrap();
 
         assert!(script.contains("chromium"));
         assert!(script.contains("http://localhost:6006"));

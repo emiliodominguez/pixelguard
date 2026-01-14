@@ -31,11 +31,7 @@ function App() {
 			<section style={{ marginBottom: "40px" }}>
 				<h2 style={{ marginBottom: "16px" }}>Cards</h2>
 				<div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-					<Card
-						title="Card Title"
-						description="This is a card description."
-						footer={<Button size="small">Learn More</Button>}
-					/>
+					<Card title="Card Title" description="This is a card description." footer={<Button size="small">Learn More</Button>} />
 				</div>
 			</section>
 
@@ -65,5 +61,5 @@ function App() {
 ReactDOM.createRoot(document.getElementById("root")).render(
 	<React.StrictMode>
 		<App />
-	</React.StrictMode>
+	</React.StrictMode>,
 );

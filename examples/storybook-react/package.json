@@ -1,36 +1,36 @@
 {
-  "name": "pixelguard-example-storybook-react",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Example Storybook React project for testing Pixelguard",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
-    "pixelguard": "../../target/release/pixelguard",
-    "pixelguard:init": "npm run pixelguard -- init",
-    "pixelguard:test": "npm run pixelguard -- test",
-    "pixelguard:update": "npm run pixelguard -- test --update",
-    "pixelguard:list": "npm run pixelguard -- list"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@storybook/addon-essentials": "^8.0.0",
-    "@storybook/addon-interactions": "^8.0.0",
-    "@storybook/addon-links": "^8.0.0",
-    "@storybook/blocks": "^8.0.0",
-    "@storybook/react": "^8.0.0",
-    "@storybook/react-vite": "^8.0.0",
-    "@storybook/test": "^8.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@vitejs/plugin-react": "^4.2.0",
-    "playwright": "^1.40.0",
-    "storybook": "^8.0.0",
-    "vite": "^5.0.0"
-  }
+	"name": "pixelguard-example-storybook-react",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Example Storybook React project for testing Pixelguard",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"storybook": "storybook dev -p 6006",
+		"build-storybook": "storybook build",
+		"pixelguard": "../../target/release/pixelguard",
+		"pixelguard:init": "npm run pixelguard -- init",
+		"pixelguard:test": "npm run pixelguard -- test",
+		"pixelguard:update": "npm run pixelguard -- test --update",
+		"pixelguard:list": "npm run pixelguard -- list"
+	},
+	"dependencies": {
+		"react": "^18.2.0",
+		"react-dom": "^18.2.0"
+	},
+	"devDependencies": {
+		"@storybook/addon-essentials": "^8.0.0",
+		"@storybook/addon-interactions": "^8.0.0",
+		"@storybook/addon-links": "^8.0.0",
+		"@storybook/blocks": "^8.0.0",
+		"@storybook/react": "^8.0.0",
+		"@storybook/react-vite": "^8.0.0",
+		"@storybook/test": "^8.0.0",
+		"@types/react": "^18.2.0",
+		"@types/react-dom": "^18.2.0",
+		"@vitejs/plugin-react": "^4.2.0",
+		"playwright": "^1.40.0",
+		"storybook": "^8.0.0",
+		"vite": "^5.0.0"
+	}
 }

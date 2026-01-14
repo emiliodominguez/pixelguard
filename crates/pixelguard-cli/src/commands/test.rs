@@ -3,13 +3,18 @@
 //! This command captures screenshots of all configured shots,
 //! compares them against the baseline, and generates an HTML report.
 
+use std::net::SocketAddr;
+use std::path::Path;
+
 use anyhow::Result;
+use axum::Router;
 use clap::Args;
 use pixelguard_core::{
     capture::{capture_screenshots_in_dir, update_baseline},
     diff::{diff_images, has_baseline},
     generate_report, Config,
 };
+use tower_http::services::ServeDir;
 
 /// Arguments for the test command.
 #[derive(Args)]
@@ -29,6 +34,14 @@ pub struct TestArgs {
     /// Show detailed progress
     #[arg(long)]
     verbose: bool,
+
+    /// Serve the report in a local web server after completion
+    #[arg(long)]
+    serve: bool,
+
+    /// Port for the local web server (default: 3333)
+    #[arg(long, default_value = "3333")]
+    port: u16,
 }
 
 /// Runs the test command.
@@ -186,7 +199,11 @@ pub async fn run(args: TestArgs) -> Result<()> {
             }
         }
 
-        println!("\nView report: {}", report_path.display());
+        if args.serve {
+            println!("\nStarting server...");
+        } else {
+            println!("\nView report: {}", report_path.display());
+        }
 
         if !diff_result.changed.is_empty()
             || !diff_result.added.is_empty()
@@ -195,6 +212,33 @@ pub async fn run(args: TestArgs) -> Result<()> {
             println!("\nTo update baseline: pixelguard test --update");
         }
     }
+
+    // Serve the report if requested
+    if args.serve && !args.ci {
+        let output_dir = working_dir.join(&config.output_dir);
+        serve_report(&output_dir, args.port).await?;
+    }
+
+    Ok(())
+}
+
+/// Serves the report directory on a local HTTP server.
+async fn serve_report(output_dir: &Path, port: u16) -> Result<()> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let url = format!("http://localhost:{}/report.html", port);
+
+    let app = Router::new().fallback_service(ServeDir::new(output_dir));
+
+    println!("Serving report at: {}", url);
+    println!("Press Ctrl+C to stop the server\n");
+
+    // Open browser
+    if let Err(e) = open::that(&url) {
+        eprintln!("Could not open browser: {}. Open {} manually.", e, url);
+    }
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
