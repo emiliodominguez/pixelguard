@@ -10,6 +10,8 @@ use anyhow::{Context, Result};
 use tracing::{debug, info};
 
 use crate::config::Config;
+use crate::plugins::PluginRegistry;
+use crate::storage::Storage;
 
 /// Result of capturing screenshots.
 #[derive(Debug, Clone)]
@@ -121,8 +123,56 @@ const config = {{
     baseUrl: {base_url},
     viewport: {{ width: {width}, height: {height} }},
     outputDir: {output_dir},
-    shots: {shots}
+    shots: {shots},
+    concurrency: {concurrency}
 }};
+
+// Capture a single screenshot
+async function captureOne(context, shot, results) {{
+    const page = await context.newPage();
+
+    try {{
+        const url = config.baseUrl + shot.path;
+        console.error(`Capturing: ${{shot.name}}`);
+
+        await page.goto(url, {{
+            waitUntil: 'networkidle',
+            timeout: 30000
+        }});
+
+        if (shot.waitFor) {{
+            await page.waitForSelector(shot.waitFor, {{ timeout: 10000 }});
+        }}
+
+        if (shot.delay) {{
+            await new Promise(resolve => setTimeout(resolve, shot.delay));
+        }}
+
+        const screenshotPath = `${{config.outputDir}}/${{shot.name}}.png`;
+        await page.screenshot({{
+            path: screenshotPath,
+            fullPage: false
+        }});
+
+        results.captured.push({{
+            name: shot.name,
+            path: screenshotPath
+        }});
+    }} catch (error) {{
+        results.failed.push({{
+            name: shot.name,
+            error: error.message
+        }});
+        console.error(`Failed to capture ${{shot.name}}: ${{error.message}}`);
+    }} finally {{
+        await page.close();
+    }}
+}}
+
+// Process shots in batches for parallel capture
+async function processBatch(context, shots, results) {{
+    await Promise.all(shots.map(shot => captureOne(context, shot, results)));
+}}
 
 async function captureScreenshots() {{
     const results = {{ captured: [], failed: [] }};
@@ -134,45 +184,15 @@ async function captureScreenshots() {{
     }});
 
     try {{
-        for (const shot of config.shots) {{
-            const page = await context.newPage();
+        // Split shots into batches based on concurrency
+        const batches = [];
+        for (let i = 0; i < config.shots.length; i += config.concurrency) {{
+            batches.push(config.shots.slice(i, i + config.concurrency));
+        }}
 
-            try {{
-                const url = config.baseUrl + shot.path;
-                console.error(`Capturing: ${{shot.name}}`);
-
-                await page.goto(url, {{
-                    waitUntil: 'networkidle',
-                    timeout: 30000
-                }});
-
-                if (shot.waitFor) {{
-                    await page.waitForSelector(shot.waitFor, {{ timeout: 10000 }});
-                }}
-
-                if (shot.delay) {{
-                    await new Promise(resolve => setTimeout(resolve, shot.delay));
-                }}
-
-                const screenshotPath = `${{config.outputDir}}/${{shot.name}}.png`;
-                await page.screenshot({{
-                    path: screenshotPath,
-                    fullPage: false
-                }});
-
-                results.captured.push({{
-                    name: shot.name,
-                    path: screenshotPath
-                }});
-            }} catch (error) {{
-                results.failed.push({{
-                    name: shot.name,
-                    error: error.message
-                }});
-                console.error(`Failed to capture ${{shot.name}}: ${{error.message}}`);
-            }} finally {{
-                await page.close();
-            }}
+        // Process batches sequentially, shots within batch in parallel
+        for (const batch of batches) {{
+            await processBatch(context, batch, results);
         }}
     }} finally {{
         await browser.close();
@@ -192,6 +212,7 @@ captureScreenshots().catch(error => {{
         height = config.viewport.height,
         output_dir = serde_json::to_string(&output_dir_str)?,
         shots = shots_json,
+        concurrency = config.concurrency,
     );
 
     Ok(script)
@@ -291,10 +312,15 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
 /// Copies current screenshots to the baseline directory.
 ///
 /// This is used when updating the baseline with `--update` flag.
-pub fn update_baseline<P: AsRef<Path>>(config: &Config, working_dir: P) -> Result<()> {
+/// Supports storage plugins for remote baseline storage.
+pub fn update_baseline<P: AsRef<Path>>(
+    config: &Config,
+    working_dir: P,
+    plugin_registry: Option<&PluginRegistry>,
+) -> Result<()> {
     let working_dir = working_dir.as_ref();
-    let current_dir = working_dir.join(&config.output_dir).join("current");
-    let baseline_dir = working_dir.join(&config.output_dir).join("baseline");
+    let output_dir = working_dir.join(&config.output_dir);
+    let current_dir = output_dir.join("current");
 
     if !current_dir.exists() {
         anyhow::bail!(
@@ -302,20 +328,31 @@ pub fn update_baseline<P: AsRef<Path>>(config: &Config, working_dir: P) -> Resul
         );
     }
 
-    // Create baseline directory
-    std::fs::create_dir_all(&baseline_dir)?;
+    // Create storage instance
+    let storage = Storage::new(output_dir, working_dir.to_path_buf(), plugin_registry);
+
+    // Get list of current screenshots
+    let current_files: Vec<_> = std::fs::read_dir(&current_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "png"))
+        .collect();
+
+    // Create baseline directory for local storage
+    if !storage.is_remote() {
+        std::fs::create_dir_all(working_dir.join(&config.output_dir).join("baseline"))?;
+    }
 
     // Copy all PNG files from current to baseline
-    for entry in std::fs::read_dir(&current_dir)? {
-        let entry = entry?;
+    for entry in current_files {
         let path = entry.path();
+        let filename = path.file_name().unwrap().to_string_lossy();
+        let name = path.file_stem().unwrap().to_string_lossy();
 
-        if path.extension().is_some_and(|ext| ext == "png") {
-            let filename = path.file_name().unwrap();
-            let dest = baseline_dir.join(filename);
-            std::fs::copy(&path, &dest)?;
-            debug!("Updated baseline: {:?}", filename);
-        }
+        let current_path = format!("current/{}", filename);
+        let baseline_path = format!("baseline/{}", filename);
+
+        storage.copy(&current_path, &baseline_path)?;
+        debug!("Updated baseline: {}", name);
     }
 
     info!("Baseline updated with current screenshots");
