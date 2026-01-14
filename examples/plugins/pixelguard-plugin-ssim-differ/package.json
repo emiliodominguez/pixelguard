@@ -1,0 +1,28 @@
+{
+	"name": "pixelguard-plugin-ssim-differ",
+	"version": "1.0.0",
+	"description": "SSIM differ plugin for Pixelguard - perceptual image comparison",
+	"main": "src/index.js",
+	"keywords": [
+		"pixelguard",
+		"plugin",
+		"differ",
+		"ssim",
+		"perceptual",
+		"visual-regression"
+	],
+	"author": "",
+	"license": "MIT",
+	"peerDependencies": {
+		"sharp": "^0.33.0",
+		"ssim.js": "^3.5.0"
+	},
+	"pixelguard": {
+		"name": "SSIM Differ",
+		"category": "differ",
+		"entry": "src/index.js",
+		"hooks": [
+			"compare"
+		]
+	}
+}

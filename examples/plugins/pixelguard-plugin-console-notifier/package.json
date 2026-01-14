@@ -1,0 +1,21 @@
+{
+	"name": "pixelguard-plugin-console-notifier",
+	"version": "1.0.0",
+	"description": "Console notification plugin for Pixelguard - prints formatted results",
+	"main": "src/index.js",
+	"pixelguard": {
+		"name": "Console Notifier",
+		"category": "notifier",
+		"entry": "src/index.js",
+		"hooks": [
+			"notify"
+		]
+	},
+	"keywords": [
+		"pixelguard",
+		"plugin",
+		"notifier",
+		"console"
+	],
+	"license": "MIT"
+}

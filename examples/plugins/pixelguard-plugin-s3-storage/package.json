@@ -1,0 +1,31 @@
+{
+	"name": "pixelguard-plugin-s3-storage",
+	"version": "1.0.0",
+	"description": "S3 storage plugin for Pixelguard - store baselines in AWS S3",
+	"main": "src/index.js",
+	"keywords": [
+		"pixelguard",
+		"plugin",
+		"storage",
+		"s3",
+		"aws",
+		"visual-regression"
+	],
+	"author": "",
+	"license": "MIT",
+	"peerDependencies": {
+		"@aws-sdk/client-s3": "^3.0.0"
+	},
+	"pixelguard": {
+		"name": "S3 Storage",
+		"category": "storage",
+		"entry": "src/index.js",
+		"hooks": [
+			"read",
+			"write",
+			"exists",
+			"list",
+			"delete"
+		]
+	}
+}
