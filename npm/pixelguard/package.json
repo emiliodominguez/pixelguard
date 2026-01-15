@@ -1,6 +1,6 @@
 {
 	"name": "pixelguard",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Open-source visual regression testing CLI",
 	"keywords": [
 		"visual-regression",
@@ -25,7 +25,7 @@
 	},
 	"files": [
 		"scripts/",
-		"bin/"
+		"README.md"
 	],
 	"scripts": {
 		"postinstall": "node scripts/postinstall.js"
