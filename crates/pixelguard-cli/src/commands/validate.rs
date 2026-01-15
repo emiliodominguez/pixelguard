@@ -66,7 +66,7 @@ pub async fn run(args: ValidateArgs) -> Result<()> {
         Err(e) => {
             checks.push(CheckResult::fail(
                 "config",
-                format!("Configuration error: {}", e),
+                format!("❌ Configuration error: {}\n\n💡 Solution: Run 'pixelguard init' to create a valid configuration.", e),
             ));
             None
         }
@@ -92,17 +92,17 @@ pub async fn run(args: ValidateArgs) -> Result<()> {
         if cfg.shots.is_empty() && cfg.source != "storybook" {
             checks.push(CheckResult::fail(
                 "shots",
-                "No shots configured. Run 'pixelguard init' or add shots manually.",
+                "❌ No shots configured.\n\n💡 Solutions:\n  • Run 'pixelguard init' to auto-detect shots\n  • Or add shots manually to pixelguard.config.json",
             ));
         } else if cfg.source == "storybook" {
             checks.push(CheckResult::pass(
                 "shots",
-                "Shots will be discovered from Storybook at runtime",
+                "✨ Shots will be discovered from Storybook at runtime",
             ));
         } else {
             checks.push(CheckResult::pass(
                 "shots",
-                format!("{} shots configured", cfg.shots.len()),
+                format!("✅ {} shots configured", cfg.shots.len()),
             ));
         }
     }
@@ -128,12 +128,12 @@ fn check_node() -> CheckResult {
     match Command::new("node").arg("--version").output() {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            CheckResult::pass("node", format!("Node.js {} is available", version))
+            CheckResult::pass("node", format!("✅ Node.js {} is available", version))
         }
-        Ok(_) => CheckResult::fail("node", "Node.js command failed. Please install Node.js."),
+        Ok(_) => CheckResult::fail("node", "❌ Node.js command failed.\n\n💡 Solution: Reinstall Node.js from https://nodejs.org"),
         Err(_) => CheckResult::fail(
             "node",
-            "Node.js not found. Please install Node.js (https://nodejs.org).",
+            "❌ Node.js not found.\n\n💡 Solution:\n  • Install from https://nodejs.org\n  • Restart your terminal after installation",
         ),
     }
 }
@@ -148,18 +148,21 @@ fn check_playwright() -> CheckResult {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let version = version.lines().next().unwrap_or(&version);
-            CheckResult::pass("playwright", format!("Playwright {} is available", version))
+            CheckResult::pass(
+                "playwright",
+                format!("✅ Playwright {} is available", version),
+            )
         }
         _ => {
             // Try checking if @playwright/test is in node_modules
             if std::path::Path::new("node_modules/@playwright/test").exists()
                 || std::path::Path::new("node_modules/playwright").exists()
             {
-                CheckResult::pass("playwright", "Playwright is installed in node_modules")
+                CheckResult::pass("playwright", "✅ Playwright is installed in node_modules")
             } else {
                 CheckResult::fail(
                     "playwright",
-                    "Playwright not found. Install with: npm install -D @playwright/test",
+                    "❌ Playwright not found.\n\n💡 Installation:\n  1️⃣ npm install -D @playwright/test\n  2️⃣ npx playwright install chromium\n\n📝 Only Chromium is needed for screenshots.",
                 )
             }
         }
@@ -170,13 +173,13 @@ fn check_playwright() -> CheckResult {
 async fn check_base_url(url: &str) -> CheckResult {
     match reqwest::get(url).await {
         Ok(response) if response.status().is_success() => {
-            CheckResult::pass("base_url", format!("{} is reachable", url))
+            CheckResult::pass("base_url", format!("✅ {} is reachable", url))
         }
         Ok(response) => CheckResult::fail(
             "base_url",
-            format!("{} returned status {}", url, response.status()),
+            format!("❌ {} returned status {}\n\n💡 Solution: Check that your dev server is running on the correct port.", url, response.status()),
         ),
-        Err(e) => CheckResult::fail("base_url", format!("{} is not reachable: {}", url, e)),
+        Err(e) => CheckResult::fail("base_url", format!("❌ {} is not reachable: {}\n\n💡 Solutions:\n  • Start your dev server\n  • Check firewall settings\n  • Verify the URL in pixelguard.config.json", url, e)),
     }
 }
 
@@ -206,6 +209,7 @@ fn output_json(checks: &[CheckResult]) -> Result<()> {
 /// Outputs check results as a formatted table.
 fn output_table(checks: &[CheckResult]) {
     println!("Pixelguard Environment Validation\n");
+    println!("🔍 Checking prerequisites...\n");
 
     for check in checks {
         let icon = if check.passed { "\u{2713}" } else { "\u{2717}" };
@@ -221,12 +225,19 @@ fn output_table(checks: &[CheckResult]) {
 
     if all_passed {
         println!(
-            "All checks passed ({}/{}). Ready to run tests!",
+            "✅ All checks passed ({}/{}). Your environment is ready to use Pixelguard!\n\n\
+             🚀 Next steps:\n  \
+             • Run 'pixelguard test' to capture screenshots\n  \
+             • Use 'pixelguard --help' to see all commands",
             passed, total
         );
     } else {
         println!(
-            "{}/{} checks passed. Please fix the issues above before running tests.",
+            "❌ {}/{} checks passed. Please fix the issues above before running tests.\n\n\
+             💡 Common solutions:\n  \
+             • Install missing dependencies (Node.js, Playwright)\n  \
+             • Start your dev server\n  \
+             • Run 'pixelguard init' if configuration is missing",
             passed, total
         );
     }

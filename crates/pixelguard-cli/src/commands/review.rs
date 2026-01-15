@@ -105,29 +105,33 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
     // Load results.json
     let results_content = std::fs::read_to_string(&results_path).with_context(|| {
         format!(
-            "Could not read results file at '{}'. \
-             Run 'pixelguard test' first to generate results.",
+            "❌ Could not read results file at '{}'.\n\n\
+             💡 Solutions:\n  \
+             1️⃣ Run 'pixelguard test' first to generate results\n  \
+             2️⃣ Check that tests completed successfully\n  \
+             3️⃣ Verify the output directory path",
             results_path.display()
         )
     })?;
 
     let results: ResultsJson = serde_json::from_str(&results_content).with_context(|| {
         format!(
-            "Invalid results file format in '{}'. \
-             Try running 'pixelguard test' again.",
+            "❌ Invalid results file format in '{}'.\n\n\
+             💡 Solution: Try running 'pixelguard test' again to regenerate results.",
             results_path.display()
         )
     })?;
 
     // Check if there are changes to review
     if results.summary.passed || results.summary.changed == 0 {
-        println!("\u{2713} All tests passed! No changes to review.");
+        println!("✅ All tests passed! No changes to review.");
+        println!("\n💡 Tip: Visual regression tests are passing. Great work!");
         return Ok(());
     }
 
     let changed = &results.results.changed;
     println!(
-        "\nFound {} changed screenshot(s) to review\n",
+        "\n🔍 Found {} changed screenshot(s) to review\n",
         changed.len()
     );
 
@@ -210,13 +214,13 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
     }
 
     // Summary
-    println!("\n\u{2500}\u{2500}\u{2500} Review Summary \u{2500}\u{2500}\u{2500}");
-    println!("\u{2713} Approved: {}", approved.len());
-    println!("\u{2717} Rejected: {}", rejected.len());
-    println!("\u{2192} Skipped:  {}", skipped.len());
+    println!("\n─── 📋 Review Summary ───");
+    println!("✅ Approved: {}", approved.len());
+    println!("❌ Rejected: {}", rejected.len());
+    println!("⏭️  Skipped:  {}", skipped.len());
 
     if approved.is_empty() {
-        println!("\nNo changes approved. Baseline remains unchanged.");
+        println!("\nℹ️  No changes approved. Baseline remains unchanged.");
         return Ok(());
     }
 
@@ -248,7 +252,10 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
     )?;
 
     info!("Updated {} baseline screenshot(s)", updated_count);
-    println!("\n\u{2713} Updated {} baseline(s)", updated_count);
+    println!("\n✅ Updated {} baseline(s)", updated_count);
+    println!("\n💡 Next steps:");
+    println!("  1️⃣ Commit the updated baselines to version control");
+    println!("  2️⃣ Run 'pixelguard test' to verify the changes");
 
     Ok(())
 }

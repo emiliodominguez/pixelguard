@@ -114,7 +114,7 @@ pub async fn detect_project_type<P: AsRef<Path>>(dir: P, port: Option<u16>) -> R
 
     // Check for Storybook first - it provides the most value
     if dir.join(".storybook").exists() {
-        info!("Found .storybook directory");
+        info!("✨ Found .storybook directory");
         if let Some(project) = detect_storybook(port).await {
             return Ok(project);
         }
@@ -142,11 +142,11 @@ async fn detect_storybook(port: Option<u16>) -> Option<ProjectType> {
 
     for port in ports {
         let base_url = format!("http://localhost:{}", port);
-        debug!("Probing Storybook at {}", base_url);
+        debug!("🔍 Probing Storybook at {}", base_url);
 
         if let Some(stories) = fetch_storybook_stories(&base_url).await {
             info!(
-                "Found Storybook at {} with {} stories",
+                "✨ Found Storybook at {} with {} stories",
                 base_url,
                 stories.len()
             );
@@ -243,10 +243,10 @@ async fn detect_dev_server(port: Option<u16>) -> Option<ProjectType> {
 
     for port in ports {
         let base_url = format!("http://localhost:{}", port);
-        debug!("Probing dev server at {}", base_url);
+        debug!("🔍 Probing dev server at {}", base_url);
 
         if client.get(&base_url).send().await.is_ok() {
-            info!("Found dev server at {}", base_url);
+            info!("✅ Found dev server at {}", base_url);
             return Some(ProjectType::DevServer { base_url });
         }
     }

@@ -60,8 +60,11 @@ fn resolve_plugin_path(name: &str, working_dir: &Path) -> Result<PathBuf> {
             return Ok(path);
         } else {
             anyhow::bail!(
-                "Local plugin '{}' not found at '{}'. \
-                 Check that the path is correct.",
+                "❌ Local plugin '{}' not found at '{}'.\n\n\
+                 💡 Solutions:\n  \
+                 • Check that the path is correct\n  \
+                 • Verify the plugin directory exists\n  \
+                 • Use relative path starting with './'",
                 name,
                 path.display()
             );
@@ -87,8 +90,14 @@ fn resolve_plugin_path(name: &str, working_dir: &Path) -> Result<PathBuf> {
     }
 
     anyhow::bail!(
-        "Plugin '{}' not found in node_modules. \
-         Install it with: npm install {}",
+        "❌ Plugin '{}' not found in node_modules.\n\n\
+         💡 Solutions:\n  \
+         1️⃣ Install it: npm install {}\n  \
+         2️⃣ Or use pnpm: pnpm add {}\n  \
+         3️⃣ Or use yarn: yarn add {}\n\n\
+         📍 Check spelling in pixelguard.config.json",
+        name,
+        name,
         name,
         name
     )
@@ -101,7 +110,11 @@ pub fn validate_plugin_path(path: &Path) -> Result<()> {
     let package_json = path.join("package.json");
 
     if !package_json.exists() {
-        anyhow::bail!("Plugin at '{}' is missing package.json", path.display());
+        anyhow::bail!(
+            "❌ Plugin at '{}' is missing package.json.\n\n\
+             💡 Solution: This doesn't appear to be a valid npm package.",
+            path.display()
+        );
     }
 
     let content = std::fs::read_to_string(&package_json)
@@ -109,8 +122,15 @@ pub fn validate_plugin_path(path: &Path) -> Result<()> {
 
     if !content.contains("\"pixelguard\"") {
         anyhow::bail!(
-            "Plugin at '{}' is missing 'pixelguard' field in package.json. \
-             This doesn't appear to be a valid Pixelguard plugin.",
+            "❌ Plugin at '{}' is missing 'pixelguard' field in package.json.\n\n\
+             💡 Solution: This doesn't appear to be a valid Pixelguard plugin.\n\n\
+             📚 A valid plugin needs:\n  \
+             {{\n    \
+             \"pixelguard\": {{\n      \
+             \"category\": \"notifier\",\n      \
+             \"hooks\": [\"notify\"]\n    \
+             }}\n  \
+             }}",
             path.display()
         );
     }

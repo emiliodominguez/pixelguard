@@ -75,10 +75,16 @@ pub fn load_plugin(
 
     if !entry_path.exists() {
         anyhow::bail!(
-            "Plugin '{}' entry point '{}' not found at '{}'",
+            "❌ Plugin '{}' entry point '{}' not found at '{}'.\n\n\
+             💡 Solutions:\n  \
+             • Check plugin is installed: npm list {}\n  \
+             • Reinstall the plugin: npm install {}\n  \
+             • Verify package.json 'main' field is correct",
             package.name,
             entry_file,
-            entry_path.display()
+            entry_path.display(),
+            package.name,
+            package.name
         );
     }
 
@@ -137,15 +143,22 @@ pub fn validate_manifest(plugin: &LoadedPlugin) -> Result<()> {
 
     if manifest.name.is_empty() {
         anyhow::bail!(
-            "Plugin at '{}' has empty name in pixelguard manifest",
+            "❌ Plugin at '{}' has empty name in pixelguard manifest.\n\n\
+             💡 Solution: Add 'name' field to 'pixelguard' section in package.json",
             plugin.package_path.display()
         );
     }
 
     if manifest.hooks.is_empty() {
         anyhow::bail!(
-            "Plugin '{}' has no hooks defined. \
-             At least one hook is required.",
+            "❌ Plugin '{}' has no hooks defined.\n\n\
+             💡 Solution: At least one hook is required in the 'pixelguard' manifest.\n\n\
+             📚 Example:\n  \
+             {{\n    \
+             \"pixelguard\": {{\n      \
+             \"hooks\": [\"notify\"]\n    \
+             }}\n  \
+             }}",
             manifest.name
         );
     }
@@ -171,10 +184,12 @@ fn validate_hooks_for_category(plugin: &LoadedPlugin) -> Result<()> {
     for hook in &plugin.manifest.hooks {
         if !valid_hooks.contains(&hook.as_str()) {
             anyhow::bail!(
-                "Plugin '{}' declares invalid hook '{}' for category {:?}. \
-                 Valid hooks are: {:?}",
+                "❌ Plugin '{}' declares invalid hook '{}' for category {:?}.\n\n\
+                 ✅ Valid hooks for {:?}: {:?}\n\n\
+                 💡 Solution: Update the 'hooks' array in package.json to use valid hooks.",
                 plugin.manifest.name,
                 hook,
+                plugin.manifest.category,
                 plugin.manifest.category,
                 valid_hooks
             );

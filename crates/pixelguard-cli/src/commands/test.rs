@@ -78,7 +78,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
     // Initialize plugins
     let plugin_registry = plugins::init_plugins(&config, &working_dir)?;
     if !plugin_registry.is_empty() && !args.ci {
-        info!("Loaded {} plugin(s)", plugin_registry.len());
+        info!("🔌 Loaded {} plugin(s)", plugin_registry.len());
     }
 
     // Dynamically discover shots if source is storybook and no shots configured
@@ -86,8 +86,18 @@ pub async fn run(args: TestArgs) -> Result<()> {
         let discovered = discover_shots(&config).await?;
         if discovered.is_empty() {
             anyhow::bail!(
-                "Could not discover any stories from Storybook at {}. \
-                 Make sure Storybook is running.",
+                "❌ Could not discover any stories from Storybook at {}\n\n\
+                 🔍 Possible causes:\n  \
+                 • Storybook is not running\n  \
+                 • Wrong URL or port in config\n  \
+                 • Network/firewall blocking the connection\n  \
+                 • Storybook not properly configured\n\n\
+                 💡 Solutions:\n  \
+                 1️⃣ Start Storybook: npm run storybook\n  \
+                 2️⃣ Verify it's accessible at {}\n  \
+                 3️⃣ Check 'baseUrl' in pixelguard.config.json\n  \
+                 4️⃣ Try running 'pixelguard validate' to diagnose issues",
+                config.base_url,
                 config.base_url
             );
         }
@@ -97,8 +107,16 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     if config.shots.is_empty() {
         anyhow::bail!(
-            "No shots configured. Run 'pixelguard init' first, \
-             or add shots to pixelguard.config.json manually."
+            "❌ No shots configured.\n\n\
+             💡 Solutions:\n  \
+             1️⃣ Run 'pixelguard init' to auto-detect your project, or\n  \
+             2️⃣ Add shots manually to pixelguard.config.json:\n\n     \
+                {{\n       \
+                  \"shots\": [\n         \
+                    {{\"name\": \"home\", \"path\": \"/\"}}\n       \
+                  ]\n     \
+                }}\n\n  \
+             3️⃣ See examples at: https://github.com/pixelguard/docs"
         );
     }
 
@@ -109,7 +127,12 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
         if config.shots.is_empty() {
             anyhow::bail!(
-                "No shots match filter '{}'. {} shots were filtered out.",
+                "❌ No shots match filter '{}'.\n\
+                 📊 {} shots were filtered out.\n\n\
+                 💡 Solutions:\n  \
+                 • Check the filter pattern for typos\n  \
+                 • Use 'pixelguard list' to see all available shots\n  \
+                 • Try a broader pattern, e.g., --filter=button*",
                 pattern,
                 original_count
             );
@@ -117,7 +140,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
         if !args.ci {
             println!(
-                "Filtered to {} of {} shots matching '{}'",
+                "🔍 Filtered to {} of {} shots matching '{}'",
                 config.shots.len(),
                 original_count,
                 pattern
@@ -134,7 +157,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
     }
 
     if !args.ci {
-        println!("Capturing {} screenshots...", shot_count);
+        println!("📸 Capturing {} screenshots...", shot_count);
     }
 
     // Capture screenshots (using plugin if available)
@@ -142,12 +165,14 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     if !capture_result.failed.is_empty() {
         eprintln!(
-            "\nWarning: {} shots failed to capture:",
+            "\n⚠️  Warning: {} shot(s) failed to capture:",
             capture_result.failed.len()
         );
         for failed in &capture_result.failed {
-            eprintln!("  - {}: {}", failed.name, failed.error);
+            eprintln!("   ❌ {}: {}", failed.name, failed.error);
         }
+        eprintln!("\n💡 Tip: Check that your dev server is running and URLs are correct.");
+        eprintln!();
     }
 
     // Handle --update or --update-only flag
@@ -161,15 +186,14 @@ pub async fn run(args: TestArgs) -> Result<()> {
             println!("{{\"status\":\"updated\",\"count\":{}}}", updated_count);
         } else if let Some(names) = &args.update_only {
             println!(
-                "\n\u{2713} Updated {} baseline(s): {}",
+                "\n✅ Updated {} baseline(s): {}",
                 updated_count,
                 names.join(", ")
             );
+            println!("💡 Tip: Commit these changes to your version control system.");
         } else {
-            println!(
-                "\n\u{2713} Updated baseline with {} screenshots",
-                updated_count
-            );
+            println!("\n✅ Updated baseline with {} screenshot(s)", updated_count);
+            println!("💡 Tip: Commit .pixelguard/baseline/ to your version control.");
         }
 
         return Ok(());
@@ -188,15 +212,20 @@ pub async fn run(args: TestArgs) -> Result<()> {
         }
 
         println!(
-            "\nNo baseline found. This appears to be your first run.\n\
-             Run 'pixelguard test --update' to create the baseline."
+            "\n📁 No baseline found. This appears to be your first run.\n\n\
+             💡 To create your baseline:\n  \
+             pixelguard test --update\n\n\
+             📝 After creating the baseline:\n  \
+             1️⃣ Commit .pixelguard/baseline/ to version control\n  \
+             2️⃣ Run 'pixelguard test' to detect visual changes\n  \
+             3️⃣ Use 'pixelguard review' for interactive approval"
         );
         return Ok(());
     }
 
     // Compare against baseline
     if !args.ci {
-        println!("Comparing against baseline...");
+        println!("🔍 Comparing against baseline...");
     }
 
     let diff_result = diff_images(&config, &working_dir, Some(&plugin_registry))?;
@@ -227,38 +256,41 @@ pub async fn run(args: TestArgs) -> Result<()> {
         println!();
 
         if !diff_result.unchanged.is_empty() {
-            println!("\u{2713} {} unchanged", diff_result.unchanged.len());
+            println!("✅ {} unchanged", diff_result.unchanged.len());
         }
 
         if !diff_result.changed.is_empty() {
-            println!("\u{2717} {} changed", diff_result.changed.len());
+            println!("❌ {} changed", diff_result.changed.len());
             for shot in &diff_result.changed {
-                println!("    {} ({:.2}% different)", shot.name, shot.diff_percentage);
+                println!(
+                    "   └─ {} ({:.2}% different)",
+                    shot.name, shot.diff_percentage
+                );
             }
         }
 
         if !diff_result.added.is_empty() {
-            println!("+ {} added", diff_result.added.len());
+            println!("➕ {} added", diff_result.added.len());
             for name in &diff_result.added {
-                println!("    {}", name);
+                println!("   └─ {}", name);
             }
         }
 
         if !diff_result.removed.is_empty() {
-            println!("- {} removed", diff_result.removed.len());
+            println!("➖ {} removed", diff_result.removed.len());
             for name in &diff_result.removed {
-                println!("    {}", name);
+                println!("   └─ {}", name);
             }
         }
 
         if args.serve {
-            println!("\nStarting server...");
+            println!("\n🚀 Starting server...");
         } else {
-            println!("\nView report: {}", report_path.display());
+            println!("\n📊 View report: {}", report_path.display());
         }
 
         if diff_result.has_changes() {
-            println!("\nTo update baseline: pixelguard test --update");
+            println!("\n💡 To update baseline: pixelguard test --update");
         }
     }
 
@@ -287,7 +319,7 @@ async fn capture_with_plugin(
     registry: &PluginRegistry,
 ) -> Result<pixelguard_core::capture::CaptureResult> {
     if let Some(plugin) = registry.get(PluginCategory::Capture) {
-        info!("Using capture plugin: {}", plugin.name());
+        info!("🔌 Using capture plugin: {}", plugin.name());
 
         let output_dir = working_dir
             .join(&config.output_dir)
@@ -374,7 +406,7 @@ fn run_reporter_plugins(
     };
 
     for plugin in reporters {
-        info!("Running reporter plugin: {}", plugin.name());
+        info!("📊 Running reporter plugin: {}", plugin.name());
         let _output: serde_json::Value =
             plugins::executor::execute_hook(plugin, "generate", &input, working_dir)?;
     }
@@ -404,7 +436,7 @@ fn run_notifier_plugins(
     };
 
     for plugin in notifiers {
-        info!("Running notifier plugin: {}", plugin.name());
+        info!("🔔 Running notifier plugin: {}", plugin.name());
         plugins::executor::execute_hook_void(plugin, "notify", &input, working_dir)?;
     }
 
@@ -452,12 +484,16 @@ async fn serve_report(output_dir: &Path, port: u16) -> Result<()> {
         .with_state(state)
         .fallback_service(ServeDir::new(output_dir));
 
-    println!("Serving report at: {}", url);
-    println!("Press Ctrl+C to stop the server\n");
+    println!("🌐 Serving report at: {}", url);
+    println!("   Press Ctrl+C to stop the server\n");
 
     // Open browser
     if let Err(e) = open::that(&url) {
-        eprintln!("Could not open browser: {}. Open {} manually.", e, url);
+        eprintln!(
+            "⚠️  Could not open browser automatically: {}\n   \
+             Open this URL manually: {}",
+            e, url
+        );
     }
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -590,8 +626,11 @@ fn merge_shots(discovered: Vec<Shot>, overrides: &[Shot]) -> Vec<Shot> {
 fn validate_capture_environment() -> Result<()> {
     // Check Node.js
     Command::new("node").arg("--version").output().context(
-        "Node.js is required for screenshot capture but was not found. \
-             Please install Node.js from https://nodejs.org",
+        "❌ Node.js is required for screenshot capture but was not found.\n\n\
+         💡 Installation:\n  \
+         • Download from https://nodejs.org (LTS version recommended)\n  \
+         • Or use a version manager like nvm or fnm\n\n  \
+         🔍 After installation, restart your terminal and try again.",
     )?;
 
     // Check Playwright (via npx or node_modules)
@@ -605,9 +644,12 @@ fn validate_capture_environment() -> Result<()> {
 
     if !has_playwright {
         anyhow::bail!(
-            "Playwright is required for screenshot capture but was not found.\n\
-             Install it with: npm install -D @playwright/test\n\
-             Then run: npx playwright install chromium"
+            "❌ Playwright is required for screenshot capture but was not found.\n\n\
+             💡 Installation steps:\n  \
+             1️⃣ Install Playwright: npm install -D @playwright/test\n  \
+             2️⃣ Install browsers: npx playwright install chromium\n\n  \
+             📝 Note: Chromium is the only browser required for screenshots.\n  \
+             🔗 Docs: https://playwright.dev/docs/intro"
         );
     }
 

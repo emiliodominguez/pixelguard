@@ -75,8 +75,13 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
     // Load the decisions file
     let decisions_content = std::fs::read_to_string(&decisions_path).with_context(|| {
         format!(
-            "Could not read decisions file at '{}'. \
-             Make decisions in the HTML report first (click Save).",
+            "❌ Could not read decisions file at '{}'.\n\n\
+             💡 Solutions:\n  \
+             1️⃣ Make decisions in the HTML report first\n  \
+             2️⃣ Click 'Save' in the report to export decisions\n  \
+             3️⃣ Or run 'pixelguard review' for terminal-based review\n\n\
+             📍 Expected location: {}",
+            decisions_path.display(),
             decisions_path.display()
         )
     })?;
@@ -84,8 +89,11 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
     let decisions_file: DecisionsFile =
         serde_json::from_str(&decisions_content).with_context(|| {
             format!(
-                "Invalid decisions file format in '{}'. \
-                 Make sure this was saved from the Pixelguard report.",
+                "❌ Invalid decisions file format in '{}'.\n\n\
+                 💡 Solutions:\n  \
+                 • Make sure this was saved from the Pixelguard report\n  \
+                 • Don't edit the decisions.json file manually\n  \
+                 • Re-export from the report if corrupted",
                 decisions_path.display()
             )
         })?;
@@ -105,26 +113,29 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
         .count();
 
     if approved.is_empty() {
-        println!("No approved shots found in decisions file.");
+        println!("ℹ️  No approved shots found in decisions file.");
         if rejected_count > 0 {
-            println!("({} shots were marked as rejected)", rejected_count);
+            println!("   ({} shots were marked as rejected)", rejected_count);
         }
+        println!(
+            "\n💡 Tip: Review and approve changes in the HTML report or use 'pixelguard review'."
+        );
         return Ok(());
     }
 
     println!(
-        "Found {} approved shot(s), {} rejected",
+        "📊 Found {} approved shot(s), {} rejected",
         approved.len(),
         rejected_count
     );
 
     for name in &approved {
-        println!("  \u{2713} {}", name);
+        println!("  ✓ {}", name);
     }
 
     if args.dry_run {
-        println!("\nDry run - no changes made.");
-        println!("Run without --dry-run to update the baseline.");
+        println!("\n🔍 Dry run - no changes made.");
+        println!("💡 Run without --dry-run to update the baseline.");
         return Ok(());
     }
 
@@ -132,7 +143,7 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
     let plugin_registry = plugins::init_plugins(&config, &working_dir)?;
 
     // Update baseline with approved shots
-    println!("\nUpdating baseline...");
+    println!("\n📦 Updating baseline...");
     let updated_count = update_baseline(
         &config,
         &working_dir,
@@ -141,12 +152,16 @@ pub async fn run(args: ApplyArgs) -> Result<()> {
     )?;
 
     if updated_count > 0 {
-        info!("Updated {} baseline screenshot(s)", updated_count);
-        println!("\n\u{2713} Updated {} baseline(s)", updated_count);
+        info!("✅ Updated {} baseline screenshot(s)", updated_count);
+        println!("\n✅ Updated {} baseline(s)", updated_count);
 
         if updated_count < approved.len() {
-            println!("  (some approved shots may not have current screenshots)");
+            println!("   ℹ️  (some approved shots may not have current screenshots)");
         }
+
+        println!("\n💡 Next steps:");
+        println!("  1️⃣ Commit the updated baselines to version control");
+        println!("  2️⃣ Run 'pixelguard test' to verify the changes");
     } else {
         println!("\nNo baselines were updated.");
         println!("Make sure 'pixelguard test' was run to capture current screenshots.");

@@ -29,11 +29,12 @@ pub async fn run(args: PluginsArgs) -> Result<()> {
         if args.json {
             println!("[]");
         } else {
-            println!("No plugins configured.");
-            println!("\nTo add plugins, update your pixelguard.config.json:");
+            println!("ℹ️  No plugins configured.");
+            println!("\n💡 To add plugins, update your pixelguard.config.json:");
             println!("  {{");
             println!("    \"plugins\": [\"pixelguard-plugin-example\"]");
             println!("  }}");
+            println!("\n📚 See available plugins at: https://github.com/pixelguard/plugins");
         }
         return Ok(());
     }
@@ -90,11 +91,11 @@ fn output_table(registry: &Result<plugins::PluginRegistry>) -> Result<()> {
             let all_plugins = reg.all_active();
 
             if all_plugins.is_empty() {
-                println!("No plugins loaded.");
+                println!("ℹ️  No plugins loaded.");
                 return Ok(());
             }
 
-            println!("Loaded plugins ({}):\n", all_plugins.len());
+            println!("🔌 Loaded plugins ({}):\n", all_plugins.len());
 
             // Find max name length for alignment
             let max_name = all_plugins
@@ -118,7 +119,11 @@ fn output_table(registry: &Result<plugins::PluginRegistry>) -> Result<()> {
             print_category_summary(reg);
         }
         Err(e) => {
-            println!("Error loading plugins: {}", e);
+            println!("❌ Error loading plugins: {}", e);
+            println!("\n💡 Common solutions:");
+            println!("  • Run 'npm install' to install plugin packages");
+            println!("  • Check plugin names in pixelguard.config.json");
+            println!("  • Verify plugins are compatible with this version");
         }
     }
 

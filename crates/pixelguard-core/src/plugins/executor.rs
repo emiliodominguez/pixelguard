@@ -16,7 +16,12 @@ use super::types::{LoadedPlugin, PluginResult};
 fn check_plugin_error(result: &PluginResult, plugin_name: &str, hook_name: &str) -> Result<()> {
     if !result.success {
         anyhow::bail!(
-            "Plugin '{}' hook '{}' failed: {}",
+            "❌ Plugin '{}' hook '{}' failed: {}\n\n\
+             💡 Troubleshooting:\n  \
+             • Check plugin is properly installed\n  \
+             • Verify plugin options in config\n  \
+             • Review plugin documentation\n  \
+             • Check console output above for details",
             plugin_name,
             hook_name,
             result.error.as_deref().unwrap_or("Unknown error")
@@ -161,7 +166,7 @@ fn run_node_script(script: &str, working_dir: &Path) -> Result<PluginResult> {
     let script_path = temp_dir.path().join("plugin-hook.js");
     std::fs::write(&script_path, script)?;
 
-    debug!("Executing plugin script at {:?}", script_path);
+    debug!("🔌 Executing plugin script at {:?}", script_path);
 
     let output = Command::new("node")
         .arg(&script_path)

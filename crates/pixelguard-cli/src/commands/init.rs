@@ -27,19 +27,21 @@ pub async fn run(args: InitArgs) -> Result<()> {
     // Check if config already exists
     if Config::exists(&working_dir) && !args.force {
         anyhow::bail!(
-            "Configuration file already exists at 'pixelguard.config.json'.\n\
-             Use --force to overwrite."
+            "⚠️  Configuration file already exists at 'pixelguard.config.json'.\n\n\
+             💡 Solution: Use --force to overwrite the existing configuration.\n   \
+             Example: pixelguard init --force"
         );
     }
 
-    println!("Detecting project type...");
+    println!("🔍 Detecting project type...");
 
     let project = detect_project_type(&working_dir, args.port).await?;
 
     let config = match &project {
         ProjectType::Storybook { base_url, stories } => {
-            println!("\u{2713} Found Storybook at {}", base_url);
-            println!("\u{2713} Discovered {} stories", stories.len());
+            println!("✅ Found Storybook at {}", base_url);
+            println!("✨ Discovered {} stories", stories.len());
+            println!("📝 Automatically generating configuration...");
 
             Config {
                 source: "storybook".to_string(),
@@ -50,9 +52,9 @@ pub async fn run(args: InitArgs) -> Result<()> {
         }
 
         ProjectType::DevServer { base_url } => {
-            println!("\u{2713} Found dev server at {}", base_url);
+            println!("✅ Found dev server at {}", base_url);
             println!(
-                "  Note: Add shots to 'pixelguard.config.json' to specify\n  \
+                "  📝 Note: Add shots to 'pixelguard.config.json' to specify\n  \
                  which pages or components to capture."
             );
 
@@ -65,8 +67,9 @@ pub async fn run(args: InitArgs) -> Result<()> {
 
         ProjectType::Unknown => {
             println!(
-                "Could not detect a running dev server.\n\
-                 Creating minimal config — you'll need to add baseUrl and shots manually."
+                "🤔 Could not detect a running dev server.\n\
+                 📝 Creating minimal config — you'll need to add baseUrl and shots manually.\n\n\
+                 💡 Tip: Start your dev server first, then run 'pixelguard init' again."
             );
 
             Config::default()
@@ -74,7 +77,7 @@ pub async fn run(args: InitArgs) -> Result<()> {
     };
 
     config.save_to_dir(&working_dir)?;
-    println!("\u{2713} Created pixelguard.config.json");
+    println!("✅ Created pixelguard.config.json");
 
     // Create output directory
     let output_dir = working_dir.join(&config.output_dir);
@@ -83,24 +86,27 @@ pub async fn run(args: InitArgs) -> Result<()> {
     // Create .gitkeep in output directory
     std::fs::write(output_dir.join(".gitkeep"), "")?;
 
-    info!("Initialized Pixelguard in {:?}", working_dir);
+    info!("✅ Initialized Pixelguard in {:?}", working_dir);
 
-    println!("\nNext steps:");
+    println!("\n🎉 Success! Next steps:");
     match &project {
         ProjectType::Storybook { .. } => {
-            println!("  1. Run: npx pixelguard test");
-            println!("  2. Commit .pixelguard/ as your baseline");
+            println!("  1️⃣ Run: npx pixelguard test");
+            println!("  2️⃣ Commit .pixelguard/ as your baseline");
+            println!("\n💡 Tip: Run tests in CI to catch visual regressions automatically!");
         }
         ProjectType::DevServer { .. } => {
-            println!("  1. Edit pixelguard.config.json to add your shots");
-            println!("  2. Run: npx pixelguard test");
-            println!("  3. Commit .pixelguard/ as your baseline");
+            println!("  1️⃣ Edit pixelguard.config.json to add your shots");
+            println!("  2️⃣ Run: npx pixelguard test");
+            println!("  3️⃣ Commit .pixelguard/ as your baseline");
+            println!("\n💡 Tip: Use 'pixelguard list' to preview your shots before testing.");
         }
         ProjectType::Unknown => {
-            println!("  1. Start your dev server");
-            println!("  2. Edit pixelguard.config.json to add baseUrl and shots");
-            println!("  3. Run: npx pixelguard test");
-            println!("  4. Commit .pixelguard/ as your baseline");
+            println!("  1️⃣ Start your dev server");
+            println!("  2️⃣ Edit pixelguard.config.json to add baseUrl and shots");
+            println!("  3️⃣ Run: npx pixelguard test");
+            println!("  4️⃣ Commit .pixelguard/ as your baseline");
+            println!("\n💡 Tip: Use 'pixelguard validate' to check your setup before testing.");
         }
     }
 

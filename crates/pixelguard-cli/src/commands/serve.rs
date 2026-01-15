@@ -48,7 +48,11 @@ pub async fn run(args: ServeArgs) -> Result<()> {
 
     if !report_path.exists() {
         anyhow::bail!(
-            "No report found at '{}'. Run 'pixelguard test' first.",
+            "❌ No report found at '{}'.\n\n\
+             💡 Solutions:\n  \
+             1️⃣ Run 'pixelguard test' first to generate the report\n  \
+             2️⃣ Check that tests completed successfully\n  \
+             3️⃣ Verify the output directory in pixelguard.config.json",
             report_path.display()
         );
     }
@@ -66,12 +70,12 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         .with_state(state)
         .fallback_service(ServeDir::new(&output_dir));
 
-    println!("Serving report at: {}", url);
-    println!("Press Ctrl+C to stop the server\n");
+    println!("🌐 Serving report at: {}", url);
+    println!("   Press Ctrl+C to stop the server\n");
 
     // Open browser
     if let Err(e) = open::that(&url) {
-        eprintln!("Could not open browser: {}. Open {} manually.", e, url);
+        eprintln!("⚠️  Could not open browser: {}. Open {} manually.", e, url);
     }
 
     let listener = tokio::net::TcpListener::bind(addr)

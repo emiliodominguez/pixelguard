@@ -29,9 +29,10 @@ pub async fn run(args: ListArgs) -> Result<()> {
         if args.json {
             println!("[]");
         } else {
-            println!("No shots configured.");
-            println!("\nRun 'pixelguard init' to auto-detect shots,");
-            println!("or add them manually to pixelguard.config.json.");
+            println!("ℹ️  No shots configured.");
+            println!("\n💡 Solutions:");
+            println!("  • Run 'pixelguard init' to auto-detect shots");
+            println!("  • Or add them manually to pixelguard.config.json");
         }
         return Ok(());
     }
@@ -52,7 +53,7 @@ pub async fn run(args: ListArgs) -> Result<()> {
 
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
-        println!("Configured shots ({}):\n", config.shots.len());
+        println!("📸 Configured shots ({}):\n", config.shots.len());
 
         let max_name_len = config.shots.iter().map(|s| s.name.len()).max().unwrap_or(0);
 
@@ -65,9 +66,9 @@ pub async fn run(args: ListArgs) -> Result<()> {
             );
         }
 
-        println!("\nBase URL: {}", config.base_url);
+        println!("\n🌐 Base URL: {}", config.base_url);
         println!(
-            "Viewport: {}x{}",
+            "📐 Viewport: {}x{}",
             config.viewport.width, config.viewport.height
         );
     }
