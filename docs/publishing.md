@@ -6,7 +6,7 @@ This guide covers how to release new versions of Pixelguard to npm.
 
 - Node.js 18+
 - Rust toolchain (for building binaries)
-- npm account with publish access to `pixelguard` and `@pixelguard/plugin-types`
+- npm account with publish access to `pixelguard` and `pixelguard-plugin-types`
 - Git with clean working directory
 
 ## Quick Publish (Single Platform)
