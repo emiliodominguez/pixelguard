@@ -70,6 +70,10 @@ async fn main() -> anyhow::Result<()> {
         .without_time()
         .init();
 
+    if cli.verbose {
+        eprintln!("🔍 Verbose mode enabled - showing detailed debugging information");
+    }
+
     match cli.command {
         Commands::Init(args) => commands::init::run(args).await,
         Commands::Test(args) => commands::test::run(args).await,

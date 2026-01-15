@@ -222,8 +222,12 @@ impl Config {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path).map_err(|e| {
             anyhow::anyhow!(
-                "Could not read config file at '{}'. \
-                 Run 'pixelguard init' to create one. Error: {}",
+                "❌ Could not read config file at '{}'.\n\n\
+                 💡 Solutions:\n  \
+                 1️⃣ Run 'pixelguard init' to create a configuration\n  \
+                 2️⃣ Check file permissions\n  \
+                 3️⃣ Verify the file exists at the expected location\n\n\
+                 🔍 Error details: {}",
                 path.display(),
                 e
             )
@@ -231,7 +235,14 @@ impl Config {
 
         let config: Config = serde_json::from_str(&content).map_err(|e| {
             anyhow::anyhow!(
-                "Invalid JSON in config file '{}'. Error: {}",
+                "❌ Invalid JSON in config file '{}'.\n\n\
+                 🔍 Error details: {}\n\n\
+                 💡 Common issues:\n  \
+                 • Missing commas between properties\n  \
+                 • Trailing commas (not allowed in JSON)\n  \
+                 • Unquoted property names\n  \
+                 • Invalid escape sequences\n\n\
+                 🛠️  Use a JSON validator to check syntax: https://jsonlint.com",
                 path.display(),
                 e
             )

@@ -155,7 +155,7 @@ pub fn diff_images<P: AsRef<Path>>(
         let current_path = current_dir.join(format!("{}.png", name));
         let diff_path = diff_dir.join(format!("{}.png", name));
 
-        debug!("Comparing: {}", name);
+        debug!("🔍 Comparing: {}", name);
 
         let diff_percentage = if let Some(plugin) = differ_plugin {
             // Use plugin for comparison
@@ -173,7 +173,7 @@ pub fn diff_images<P: AsRef<Path>>(
         };
 
         if diff_percentage > config.threshold {
-            info!("{}: {:.2}% different", name, diff_percentage);
+            info!("⚠️  {}: {:.2}% different", name, diff_percentage);
             let (_, viewport) = parse_shot_name(name);
             result.changed.push(ChangedShot {
                 name: name.clone(),
@@ -184,7 +184,7 @@ pub fn diff_images<P: AsRef<Path>>(
                 viewport: viewport.map(String::from),
             });
         } else {
-            debug!("{}: unchanged", name);
+            debug!("✅ {}: unchanged", name);
             result.unchanged.push(name.clone());
             // Remove diff file if it exists and shot is unchanged
             let _ = std::fs::remove_file(&diff_path);
@@ -198,7 +198,7 @@ pub fn diff_images<P: AsRef<Path>>(
     result.changed.sort_by(|a, b| a.name.cmp(&b.name));
 
     info!(
-        "Diff complete: {} unchanged, {} changed, {} added, {} removed",
+        "📊 Diff complete: {} unchanged, {} changed, {} added, {} removed",
         result.unchanged.len(),
         result.changed.len(),
         result.added.len(),

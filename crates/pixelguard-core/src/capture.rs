@@ -253,7 +253,7 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
     let script_path = temp_dir.path().join("capture.js");
     std::fs::write(&script_path, script)?;
 
-    debug!("Executing Playwright script at {:?}", script_path);
+    debug!("🎬 Executing Playwright script at {:?}", script_path);
 
     // Execute with Node.js
     let output = Command::new("node")
@@ -268,9 +268,9 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
     if !stderr.is_empty() {
         for line in stderr.lines() {
             if line.starts_with("Capturing:") {
-                info!("{}", line);
+                info!("📸 {}", line);
             } else if line.starts_with("Failed to capture") {
-                tracing::warn!("{}", line);
+                tracing::warn!("❌ {}", line);
             } else {
                 debug!("Playwright: {}", line);
             }
@@ -281,12 +281,22 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("Cannot find module 'playwright'") {
             anyhow::bail!(
-                "Playwright is not installed. Run 'npm install playwright' \
-                 or 'npx playwright install' to set it up."
+                "❌ Playwright is not installed.\n\n\
+                 💡 Installation steps:\n  \
+                 1️⃣ Run: npm install playwright\n  \
+                 2️⃣ Or: npx playwright install\n\n\
+                 📝 This will set up Playwright for screenshot capture.\n\
+                 🔗 Docs: https://playwright.dev/docs/intro"
             );
         }
         anyhow::bail!(
-            "Playwright script failed with exit code {:?}.\nStderr: {}",
+            "❌ Playwright script failed with exit code {:?}.\n\n\
+             🔍 Error details:\n{}\n\n\
+             💡 Common causes:\n  \
+             • Dev server is not running\n  \
+             • Incorrect baseUrl in config\n  \
+             • Network connectivity issues\n  \
+             • Page load timeout (increase delay in shot config)",
             output.status.code(),
             stderr
         );
@@ -295,7 +305,12 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
     // Parse output
     let stdout = String::from_utf8_lossy(&output.stdout);
     let result: serde_json::Value = serde_json::from_str(stdout.trim()).context(
-        "Failed to parse Playwright output. This might indicate a Playwright script error.",
+        "❌ Failed to parse Playwright output.\n\n\
+         🔍 This indicates a Playwright script error.\n\n\
+         💡 Possible solutions:\n  \
+         • Check that your dev server is running\n  \
+         • Verify browser is installed: npx playwright install chromium\n  \
+         • Review error messages above for details",
     )?;
 
     let captured: Vec<CapturedShot> = result
@@ -329,7 +344,7 @@ async fn execute_playwright_script(script: &str, working_dir: &Path) -> Result<C
         .unwrap_or_default();
 
     info!(
-        "Captured {} screenshots, {} failed",
+        "✅ Captured {} screenshots, {} failed",
         captured.len(),
         failed.len()
     );
@@ -364,7 +379,10 @@ pub fn update_baseline<P: AsRef<Path>>(
 
     if !current_dir.exists() {
         anyhow::bail!(
-            "No current screenshots found. Run 'pixelguard test' first to capture screenshots."
+            "❌ No current screenshots found.\n\n\
+             💡 Solution: Run 'pixelguard test' first to capture screenshots.\n\n\
+             📍 Expected location: {}",
+            current_dir.display()
         );
     }
 
@@ -389,13 +407,13 @@ pub fn update_baseline<P: AsRef<Path>>(
         let path = entry.path();
 
         let Some(filename) = path.file_name() else {
-            warn!("Skipping entry with no filename: {:?}", path);
+            warn!("⚠️  Skipping entry with no filename: {:?}", path);
             continue;
         };
         let filename = filename.to_string_lossy();
 
         let Some(name) = path.file_stem() else {
-            warn!("Skipping entry with no file stem: {:?}", path);
+            warn!("⚠️  Skipping entry with no file stem: {:?}", path);
             continue;
         };
         let name = name.to_string_lossy();
@@ -409,7 +427,7 @@ pub fn update_baseline<P: AsRef<Path>>(
                     || filter_name == name.as_ref()
             });
             if !matches {
-                debug!("Skipping {} (not in filter)", name);
+                debug!("🔍 Skipping {} (not in filter)", name);
                 continue;
             }
         }
@@ -418,18 +436,18 @@ pub fn update_baseline<P: AsRef<Path>>(
         let baseline_path = format!("baseline/{}", filename);
 
         storage.copy(&current_path, &baseline_path)?;
-        debug!("Updated baseline: {}", name);
+        debug!("✅ Updated baseline: {}", name);
         updated_count += 1;
     }
 
     if let Some(filter_names) = filter {
         info!(
-            "Updated {} baseline screenshot(s) matching filter: {:?}",
+            "✅ Updated {} baseline screenshot(s) matching filter: {:?}",
             updated_count, filter_names
         );
     } else {
         info!(
-            "Baseline updated with {} current screenshots",
+            "✅ Baseline updated with {} current screenshots",
             updated_count
         );
     }

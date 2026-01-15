@@ -128,7 +128,11 @@ impl<'a> Storage<'a> {
             }
 
             std::fs::copy(&src, &dst).with_context(|| {
-                format!("Failed to copy {} to {}", src.display(), dst.display())
+                format!(
+                    "❌ Failed to copy {} to {}\n\n💡 Solutions:\n  • Check disk space\n  • Verify file permissions\n  • Ensure source file exists",
+                    src.display(),
+                    dst.display()
+                )
             })?;
         }
         Ok(())
@@ -138,20 +142,24 @@ impl<'a> Storage<'a> {
 
     fn read_local(&self, relative_path: &str) -> Result<Vec<u8>> {
         let path = self.base_dir.join(relative_path);
-        debug!("Reading local file: {}", path.display());
-        std::fs::read(&path).with_context(|| format!("Failed to read file: {}", path.display()))
+        debug!("📂 Reading local file: {}", path.display());
+        std::fs::read(&path).with_context(|| format!("❌ Failed to read file: {}", path.display()))
     }
 
     fn write_local(&self, relative_path: &str, data: &[u8]) -> Result<()> {
         let path = self.base_dir.join(relative_path);
-        debug!("Writing local file: {}", path.display());
+        debug!("✍️  Writing local file: {}", path.display());
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
-        std::fs::write(&path, data)
-            .with_context(|| format!("Failed to write file: {}", path.display()))
+        std::fs::write(&path, data).with_context(|| {
+            format!(
+                "❌ Failed to write file: {}\n\n💡 Check disk space and file permissions.",
+                path.display()
+            )
+        })
     }
 
     fn exists_local(&self, relative_path: &str) -> Result<bool> {
@@ -182,8 +190,12 @@ impl<'a> Storage<'a> {
     fn delete_local(&self, relative_path: &str) -> Result<()> {
         let path = self.base_dir.join(relative_path);
         if path.exists() {
-            std::fs::remove_file(&path)
-                .with_context(|| format!("Failed to delete file: {}", path.display()))?;
+            std::fs::remove_file(&path).with_context(|| {
+                format!(
+                    "❌ Failed to delete file: {}\n\n💡 Check file permissions.",
+                    path.display()
+                )
+            })?;
         }
         Ok(())
     }
@@ -191,7 +203,7 @@ impl<'a> Storage<'a> {
     // Plugin-based operations
 
     fn read_plugin(&self, plugin: &LoadedPlugin, relative_path: &str) -> Result<Vec<u8>> {
-        debug!("Reading via plugin: {}", relative_path);
+        debug!("🔌 Reading via plugin: {}", relative_path);
 
         let input = StorageInput {
             path: relative_path.to_string(),
@@ -212,7 +224,7 @@ impl<'a> Storage<'a> {
     }
 
     fn write_plugin(&self, plugin: &LoadedPlugin, relative_path: &str, data: &[u8]) -> Result<()> {
-        debug!("Writing via plugin: {}", relative_path);
+        debug!("🔌 Writing via plugin: {}", relative_path);
 
         let input = StorageInput {
             path: relative_path.to_string(),
@@ -224,7 +236,7 @@ impl<'a> Storage<'a> {
     }
 
     fn exists_plugin(&self, plugin: &LoadedPlugin, relative_path: &str) -> Result<bool> {
-        debug!("Checking exists via plugin: {}", relative_path);
+        debug!("🔍 Checking exists via plugin: {}", relative_path);
 
         let input = StorageInput {
             path: relative_path.to_string(),
@@ -239,7 +251,7 @@ impl<'a> Storage<'a> {
     }
 
     fn list_plugin(&self, plugin: &LoadedPlugin, relative_path: &str) -> Result<Vec<String>> {
-        debug!("Listing via plugin: {}", relative_path);
+        debug!("📁 Listing via plugin: {}", relative_path);
 
         let input = StorageInput {
             path: relative_path.to_string(),
@@ -254,7 +266,7 @@ impl<'a> Storage<'a> {
     }
 
     fn delete_plugin(&self, plugin: &LoadedPlugin, relative_path: &str) -> Result<()> {
-        debug!("Deleting via plugin: {}", relative_path);
+        debug!("🗑️  Deleting via plugin: {}", relative_path);
 
         let input = StorageInput {
             path: relative_path.to_string(),

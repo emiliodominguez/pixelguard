@@ -122,8 +122,8 @@ pub fn generate_report<P: AsRef<Path>>(
     std::fs::write(&json_path, json_str)
         .with_context(|| format!("Failed to write JSON export to {}", json_path.display()))?;
 
-    info!("Report generated at {}", report_path.display());
-    info!("JSON export generated at {}", json_path.display());
+    info!("📊 Report generated at {}", report_path.display());
+    info!("📊 JSON export generated at {}", json_path.display());
     Ok(report_path)
 }
 
