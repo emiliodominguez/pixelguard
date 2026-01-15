@@ -242,7 +242,7 @@ echo -e "${BLUE}Step 9: Publish to npm${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo ""
 
-echo "Publishing @pixelguard/plugin-types@$VERSION..."
+echo "Publishing pixelguard-plugin-types@$VERSION..."
 npm publish --access public
 echo -e "${GREEN}✅ Plugin types published${NC}"
 echo ""
