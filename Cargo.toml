@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/pixelguard-cli", "crates/pixelguard-core"]
 
 [workspace.package]
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/emiliodominguez/pixelguard"
