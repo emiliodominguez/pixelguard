@@ -28,10 +28,10 @@ Thumbs.db
 *.dylib
 
 # Framework build caches
-storybook-static/
-.astro/
-.next/
-dist/
+storybook-static
+.astro
+.next
+dist
 
 # Test artifacts
 *.profraw
