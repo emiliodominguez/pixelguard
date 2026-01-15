@@ -11,11 +11,15 @@
  * @see https://www.conventionalcommits.org/
  */
 
-module.exports = {
+export default {
 	extends: ["@commitlint/config-conventional"],
 	rules: {
 		// Enforce specific types
-		"type-enum": [2, "always", ["feat", "fix", "docs", "refactor", "test", "chore", "ci", "perf", "style", "build", "revert"]],
+		"type-enum": [
+			2,
+			"always",
+			["feat", "fix", "docs", "refactor", "test", "chore", "ci", "perf", "style", "build", "revert"],
+		],
 		// Optional scope with specific values
 		"scope-enum": [1, "always", ["core", "cli", "npm", "docs", "ci", "deps"]],
 		// Subject must be lowercase
