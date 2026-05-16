@@ -14,7 +14,7 @@
 	"author": "",
 	"license": "MIT",
 	"peerDependencies": {
-		"puppeteer": "^21.0.0"
+		"puppeteer": "^25.0.0"
 	},
 	"pixelguard": {
 		"name": "Puppeteer Capture",

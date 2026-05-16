@@ -12,10 +12,10 @@
 		"pixelguard:test:visual:update": "npm run pixelguard test --update"
 	},
 	"dependencies": {
-		"astro": "^5.16.9"
+		"astro": "^6.3.3"
 	},
 	"devDependencies": {
-		"playwright": "^1.57.0",
-		"typescript": "^5.9.3"
+		"playwright": "^1.60.0",
+		"typescript": "^6.0.3"
 	}
 }

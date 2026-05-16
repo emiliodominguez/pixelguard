@@ -9,25 +9,25 @@
  * Input for differ compare operation.
  */
 export interface DifferInput {
-	/** Path to baseline image */
-	baselinePath: string;
-	/** Path to current image */
-	currentPath: string;
-	/** Path to write diff image */
-	diffPath: string;
-	/** Diff threshold (0.0 to 1.0) */
-	threshold: number;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Path to baseline image */
+    baselinePath: string;
+    /** Path to current image */
+    currentPath: string;
+    /** Path to write diff image */
+    diffPath: string;
+    /** Diff threshold (0.0 to 1.0) */
+    threshold: number;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Output from differ compare operation.
  */
 export interface DifferOutput {
-	/** Percentage of pixels that differ (0-100) */
-	diffPercentage: number;
-	/** Whether images match (within threshold) */
-	matches: boolean;
+    /** Percentage of pixels that differ (0-100) */
+    diffPercentage: number;
+    /** Whether images match (within threshold) */
+    matches: boolean;
 }
 /**
  * Differ plugin interface.
@@ -62,9 +62,9 @@ export interface DifferOutput {
  * ```
  */
 export interface DifferPlugin {
-	/**
-	 * Compare two images and generate a diff.
-	 */
-	compare: (input: DifferInput) => Promise<DifferOutput>;
+    /**
+     * Compare two images and generate a diff.
+     */
+    compare: (input: DifferInput) => Promise<DifferOutput>;
 }
 //# sourceMappingURL=differ.d.ts.map

@@ -9,48 +9,48 @@
  * Input for storage read operation.
  */
 export interface StorageReadInput {
-	/** Relative path to the file */
-	path: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Relative path to the file */
+    path: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Input for storage write operation.
  */
 export interface StorageWriteInput {
-	/** Relative path to the file */
-	path: string;
-	/** Base64-encoded file data */
-	data: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Relative path to the file */
+    path: string;
+    /** Base64-encoded file data */
+    data: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Input for storage exists operation.
  */
 export interface StorageExistsInput {
-	/** Relative path to the file */
-	path: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Relative path to the file */
+    path: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Input for storage list operation.
  */
 export interface StorageListInput {
-	/** Directory path to list */
-	path: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Directory path to list */
+    path: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Input for storage delete operation.
  */
 export interface StorageDeleteInput {
-	/** Relative path to the file */
-	path: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Relative path to the file */
+    path: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Storage plugin interface.
@@ -85,27 +85,27 @@ export interface StorageDeleteInput {
  * ```
  */
 export interface StoragePlugin {
-	/**
-	 * Read a file from storage.
-	 * @returns Base64-encoded file data
-	 */
-	read: (input: StorageReadInput) => Promise<string>;
-	/**
-	 * Write a file to storage.
-	 */
-	write: (input: StorageWriteInput) => Promise<void>;
-	/**
-	 * Check if a file exists in storage.
-	 */
-	exists: (input: StorageExistsInput) => Promise<boolean>;
-	/**
-	 * List files in a directory.
-	 * @returns Array of file paths
-	 */
-	list: (input: StorageListInput) => Promise<string[]>;
-	/**
-	 * Delete a file from storage.
-	 */
-	delete: (input: StorageDeleteInput) => Promise<void>;
+    /**
+     * Read a file from storage.
+     * @returns Base64-encoded file data
+     */
+    read: (input: StorageReadInput) => Promise<string>;
+    /**
+     * Write a file to storage.
+     */
+    write: (input: StorageWriteInput) => Promise<void>;
+    /**
+     * Check if a file exists in storage.
+     */
+    exists: (input: StorageExistsInput) => Promise<boolean>;
+    /**
+     * List files in a directory.
+     * @returns Array of file paths
+     */
+    list: (input: StorageListInput) => Promise<string[]>;
+    /**
+     * Delete a file from storage.
+     */
+    delete: (input: StorageDeleteInput) => Promise<void>;
 }
 //# sourceMappingURL=storage.d.ts.map

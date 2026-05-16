@@ -12,16 +12,16 @@
 		"pixelguard:test:visual:update": "npm run pixelguard test --update"
 	},
 	"dependencies": {
-		"react": "^19.2.3",
-		"react-dom": "^19.2.3",
-		"react-router-dom": "^7.12.0"
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6",
+		"react-router-dom": "^7.15.1"
 	},
 	"devDependencies": {
-		"@types/react": "^19.2.8",
+		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
-		"@vitejs/plugin-react": "^5.1.2",
-		"playwright": "^1.57.0",
-		"typescript": "^5.9.3",
-		"vite": "^7.3.1"
+		"@vitejs/plugin-react": "^6.0.2",
+		"playwright": "^1.60.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.13"
 	}
 }

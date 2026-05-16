@@ -10,23 +10,23 @@ import type { ConfigSummary, DiffResult } from "./common";
  * Input for reporter generate operation.
  */
 export interface ReporterInput {
-	/** Diff results */
-	result: DiffResult;
-	/** Configuration summary */
-	config: ConfigSummary;
-	/** Output directory */
-	outputDir: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Diff results */
+    result: DiffResult;
+    /** Configuration summary */
+    config: ConfigSummary;
+    /** Output directory */
+    outputDir: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Output from reporter generate operation.
  */
 export interface ReporterOutput {
-	/** Path to generated report (if local file) */
-	reportPath?: string;
-	/** URL to report (if hosted) */
-	reportUrl?: string;
+    /** Path to generated report (if local file) */
+    reportPath?: string;
+    /** URL to report (if hosted) */
+    reportUrl?: string;
 }
 /**
  * Reporter plugin interface.
@@ -80,9 +80,9 @@ export interface ReporterOutput {
  * ```
  */
 export interface ReporterPlugin {
-	/**
-	 * Generate a report from diff results.
-	 */
-	generate: (input: ReporterInput) => Promise<ReporterOutput>;
+    /**
+     * Generate a report from diff results.
+     */
+    generate: (input: ReporterInput) => Promise<ReporterOutput>;
 }
 //# sourceMappingURL=reporter.d.ts.map

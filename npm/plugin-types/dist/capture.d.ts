@@ -9,65 +9,65 @@
  * A shot to capture.
  */
 export interface CaptureShot {
-	/** Shot name */
-	name: string;
-	/** URL path (appended to baseUrl) */
-	path: string;
-	/** Optional CSS selector to wait for before capturing */
-	waitFor?: string;
-	/** Optional delay in milliseconds after page load */
-	delay?: number;
+    /** Shot name */
+    name: string;
+    /** URL path (appended to baseUrl) */
+    path: string;
+    /** Optional CSS selector to wait for before capturing */
+    waitFor?: string;
+    /** Optional delay in milliseconds after page load */
+    delay?: number;
 }
 /**
  * Viewport dimensions.
  */
 export interface CaptureViewport {
-	/** Width in pixels */
-	width: number;
-	/** Height in pixels */
-	height: number;
+    /** Width in pixels */
+    width: number;
+    /** Height in pixels */
+    height: number;
 }
 /**
  * Input for capture operation.
  */
 export interface CaptureInput {
-	/** Shots to capture */
-	shots: CaptureShot[];
-	/** Base URL of the dev server */
-	baseUrl: string;
-	/** Viewport dimensions */
-	viewport: CaptureViewport;
-	/** Output directory for screenshots */
-	outputDir: string;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Shots to capture */
+    shots: CaptureShot[];
+    /** Base URL of the dev server */
+    baseUrl: string;
+    /** Viewport dimensions */
+    viewport: CaptureViewport;
+    /** Output directory for screenshots */
+    outputDir: string;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * A successfully captured shot.
  */
 export interface CapturedShot {
-	/** Shot name */
-	name: string;
-	/** Path to the screenshot file */
-	path: string;
+    /** Shot name */
+    name: string;
+    /** Path to the screenshot file */
+    path: string;
 }
 /**
  * A shot that failed to capture.
  */
 export interface FailedShot {
-	/** Shot name */
-	name: string;
-	/** Error message */
-	error: string;
+    /** Shot name */
+    name: string;
+    /** Error message */
+    error: string;
 }
 /**
  * Output from capture operation.
  */
 export interface CaptureOutput {
-	/** Successfully captured shots */
-	captured: CapturedShot[];
-	/** Failed shots */
-	failed: FailedShot[];
+    /** Successfully captured shots */
+    captured: CapturedShot[];
+    /** Failed shots */
+    failed: FailedShot[];
 }
 /**
  * Capture plugin interface.
@@ -111,9 +111,9 @@ export interface CaptureOutput {
  * ```
  */
 export interface CapturePlugin {
-	/**
-	 * Capture screenshots for the given shots.
-	 */
-	capture: (input: CaptureInput) => Promise<CaptureOutput>;
+    /**
+     * Capture screenshots for the given shots.
+     */
+    capture: (input: CaptureInput) => Promise<CaptureOutput>;
 }
 //# sourceMappingURL=capture.d.ts.map

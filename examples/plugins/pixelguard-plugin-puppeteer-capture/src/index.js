@@ -47,7 +47,7 @@ async function capture(input) {
 
 	// Launch browser
 	const browser = await puppeteer.launch({
-		headless: options.headless !== false ? "new" : false,
+		headless: options.headless !== false,
 		args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
 	});
 

@@ -9,16 +9,16 @@ import type { DiffResult } from "./common";
  * Input for notifier notify operation.
  */
 export interface NotifierInput {
-	/** Diff results */
-	result: DiffResult;
-	/** Path to the HTML report (if generated) */
-	reportPath?: string;
-	/** URL to the report (if hosted) */
-	reportUrl?: string;
-	/** Whether running in CI mode */
-	ciMode: boolean;
-	/** Plugin options from config */
-	options: Record<string, unknown>;
+    /** Diff results */
+    result: DiffResult;
+    /** Path to the HTML report (if generated) */
+    reportPath?: string;
+    /** URL to the report (if hosted) */
+    reportUrl?: string;
+    /** Whether running in CI mode */
+    ciMode: boolean;
+    /** Plugin options from config */
+    options: Record<string, unknown>;
 }
 /**
  * Notifier plugin interface.
@@ -90,9 +90,9 @@ export interface NotifierInput {
  * ```
  */
 export interface NotifierPlugin {
-	/**
-	 * Send notification about test results.
-	 */
-	notify: (input: NotifierInput) => Promise<void>;
+    /**
+     * Send notification about test results.
+     */
+    notify: (input: NotifierInput) => Promise<void>;
 }
 //# sourceMappingURL=notifier.d.ts.map
