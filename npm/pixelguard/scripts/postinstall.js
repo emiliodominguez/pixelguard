@@ -184,25 +184,26 @@ function printFallback(reason) {
 }
 
 /**
- * Main entry point for the postinstall script.
+ * Downloads, verifies and installs the binary for this platform into the package's bin directory.
  *
- * Never fails the surrounding `npm install`; problems are reported and the wrapper
- * explains them again when it is run.
+ * Shared by postinstall and by the wrapper, which calls it on first run when the package
+ * manager skipped install scripts (npm 12+ does so by default for dependencies).
  *
- * @returns {Promise<void>}
+ * @param {object} [settings] - Install settings
+ * @param {(message: string) => void} [settings.log] - Progress logger
+ * @returns {Promise<string>} Path to the verified binary
+ * @throws {Error} When the platform is unsupported, no checksum is known, or the download fails verification
  */
-async function main() {
+async function install({ log = console.log } = {}) {
 	const triple = getTargetTriple();
 	if (!triple) {
-		printFallback(`unsupported platform ${process.platform}-${process.arch}`);
-		return;
+		throw new Error(`unsupported platform ${process.platform}-${process.arch}`);
 	}
 
 	const assetName = getAssetName(triple);
 	const expected = getExpectedChecksum(assetName);
 	if (!expected) {
-		printFallback(`no published checksum for ${assetName} in this package version`);
-		return;
+		throw new Error(`no published checksum for ${assetName} in this package version`);
 	}
 
 	const binDir = path.join(__dirname, "..", "bin");
@@ -210,13 +211,13 @@ async function main() {
 	fs.mkdirSync(binDir, { recursive: true });
 
 	if (fs.existsSync(binaryPath) && sha256File(binaryPath) === expected) {
-		console.log("Pixelguard binary already installed and verified.");
-		return;
+		log("Pixelguard binary already installed and verified.");
+		return binaryPath;
 	}
 
 	const url = `https://github.com/${GITHUB_REPO}/releases/download/v${PACKAGE_VERSION}/${assetName}`;
 	const tempPath = `${binaryPath}.download-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
-	console.log(`Downloading Pixelguard for ${triple}...`);
+	log(`Downloading Pixelguard for ${triple}...`);
 
 	try {
 		await downloadFile(url, tempPath);
@@ -230,9 +231,24 @@ async function main() {
 			fs.chmodSync(tempPath, 0o755);
 		}
 		fs.renameSync(tempPath, binaryPath);
-		console.log("Pixelguard installed and verified successfully!");
-	} catch (err) {
+		log("Pixelguard installed and verified successfully!");
+		return binaryPath;
+	} finally {
 		fs.rmSync(tempPath, { force: true });
+	}
+}
+
+/**
+ * Main entry point for the postinstall script.
+ *
+ * Never fails the surrounding `npm install`; the wrapper retries the download on first run.
+ *
+ * @returns {Promise<void>}
+ */
+async function main() {
+	try {
+		await install();
+	} catch (err) {
 		printFallback(err.message);
 	}
 }
@@ -241,4 +257,4 @@ if (require.main === module) {
 	main();
 }
 
-module.exports = { downloadFile, getAssetName, getExpectedChecksum, sha256File };
+module.exports = { install, downloadFile, getAssetName, getExpectedChecksum, sha256File };

@@ -4,8 +4,9 @@
  * @fileoverview Runner script for Pixelguard npm package.
  *
  * Locates and executes the Pixelguard binary, forwarding all command-line arguments
- * and the exit status. Lookup order: the binary installed by postinstall, then
- * `PIXELGUARD_BINARY`, then the system PATH.
+ * and the exit status. Lookup order: `PIXELGUARD_BINARY`, the binary installed by
+ * postinstall, a checksum-verified download on first run (for package managers that
+ * skip install scripts, such as npm 12+), then the system PATH.
  *
  * The PATH lookup skips this wrapper itself (npm puts `node_modules/.bin` on PATH,
  * and `.bin/pixelguard` links back to this script), and a guard variable stops any
@@ -75,23 +76,44 @@ function isNativeBinary(candidate) {
 }
 
 /**
- * Searches for the Pixelguard binary in known locations.
+ * Finds a binary that is already available: an explicit override or the one installed into this package.
  *
  * @returns {string | null} Absolute path to the binary, or null if not found
  */
-function findBinary() {
-	const binaryName = getBinaryName();
-
-	const packageBin = path.join(__dirname, "..", "bin", binaryName);
-	if (isNativeBinary(packageBin)) {
-		return packageBin;
-	}
-
+function findLocalBinary() {
 	const override = process.env.PIXELGUARD_BINARY;
 	if (override && isNativeBinary(override)) {
 		return path.resolve(override);
 	}
 
+	const packageBin = path.join(__dirname, "..", "bin", getBinaryName());
+	return isNativeBinary(packageBin) ? packageBin : null;
+}
+
+/**
+ * Downloads and verifies the binary when the package manager skipped postinstall.
+ *
+ * npm 12+ does not run install scripts of dependencies unless they are allowlisted,
+ * so the first run performs the same checksum-verified install instead.
+ *
+ * @returns {Promise<string | null>} Path to the installed binary, or null if it could not be installed
+ */
+async function installOnFirstRun() {
+	try {
+		return await require("./postinstall").install({ log: (message) => console.error(message) });
+	} catch (err) {
+		console.error(`Could not install the Pixelguard binary: ${err.message}`);
+		return null;
+	}
+}
+
+/**
+ * Searches PATH for a Pixelguard binary, skipping this wrapper and other scripts.
+ *
+ * @returns {string | null} Absolute path to the binary, or null if not found
+ */
+function findBinaryOnPath() {
+	const binaryName = getBinaryName();
 	const pathDirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
 	for (const dir of pathDirs) {
 		const candidate = path.join(dir, binaryName);
@@ -123,15 +145,17 @@ function exitLikeChild(code, signal) {
 
 /**
  * Main entry point for the runner script.
+ *
+ * @returns {Promise<void>}
  */
-function main() {
+async function main() {
 	if (process.env[GUARD_VARIABLE]) {
 		console.error("Error: the Pixelguard wrapper resolved to itself; refusing to recurse.");
 		console.error("Set PIXELGUARD_BINARY to the path of the pixelguard binary.");
 		process.exit(1);
 	}
 
-	const binaryPath = findBinary();
+	const binaryPath = findLocalBinary() ?? (await installOnFirstRun()) ?? findBinaryOnPath();
 
 	if (!binaryPath) {
 		console.error("Error: Pixelguard binary not found.");

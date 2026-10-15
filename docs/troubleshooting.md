@@ -31,7 +31,7 @@ node --version  # Should be v18.0.0 or higher
 
 ### Binary download fails
 
-The npm package downloads the binary for your platform and verifies it against SHA-256 checksums shipped in the package. The binary is not installed if the download fails, the checksum does not match, or your platform has no published binary. In that case, build from source and point the wrapper at it:
+The npm package downloads the binary for your platform and verifies it against SHA-256 checksums shipped in the package. If your package manager skipped install scripts (npm 12+ does by default), the same verified download happens the first time you run `pixelguard`. The binary is not installed if the download fails, the checksum does not match, or your platform has no published binary. In that case, build from source and point the wrapper at it:
 
 ```bash
 git clone https://github.com/emiliodominguez/pixelguard.git
