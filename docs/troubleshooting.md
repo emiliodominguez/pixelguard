@@ -253,7 +253,7 @@ start .pixelguard/report.html
 
 ### Images not loading in report
 
-Check that the image files exist in `.pixelguard/baseline/`, `.pixelguard/current/`, and `.pixelguard/diff/`.
+Check that the image files exist in `.pixelguard/baseline/`, `.pixelguard/current/`, `.pixelguard/diff/` and `.pixelguard/heatmap/`. When the report is a CI artifact, upload those folders with it: the report links to the images rather than embedding them.
 
 ## Getting Help
 

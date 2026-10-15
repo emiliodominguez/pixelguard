@@ -77,7 +77,13 @@ Diff processing loads images into memory. For a 1920x1080 screenshot:
 3 images (baseline + current + diff) = ~24MB per comparison
 ```
 
-For 100 changed shots processed in parallel: ~2.4GB peak
+Comparisons run in parallel, up to `concurrency` at a time, so the peak is about
+`concurrency × 24MB` for 1920x1080 screenshots (~96MB at the default of 4).
+Lower `concurrency` if very tall full-page screenshots exhaust memory.
+
+Only screenshots that changed get a diff image and a heatmap written; for
+unchanged ones the comparison never encodes an image. Heatmaps have one pixel
+per 8×8 area, so they are 1/64 of the screenshot's size.
 
 ### Reducing Memory Usage
 
@@ -100,6 +106,23 @@ For 100 changed shots processed in parallel: ~2.4GB peak
    ```bash
    NODE_OPTIONS="--max-old-space-size=4096" npx pixelguard test
    ```
+
+## Report Performance
+
+The HTML report stays fast with thousands of screenshots:
+
+- Each changed screenshot ships only its image paths, sizes and changed areas.
+  The selected comparison view is built when the screenshot comes within about
+  1500px of the viewport and removed again once it scrolls far away, so only a
+  handful of images are decoded at any time, whatever the report's length.
+- Every image's size is known when the report is written, so space is reserved
+  before images load and the page never jumps while scrolling or following an
+  index link.
+- Filtering by name runs once per frame, however fast you type.
+
+On a 600-screenshot run (500 changed, 1280×2400 each), the report loaded in
+about 80ms and kept at most 13 images in the page in every view while
+scrolling from top to bottom.
 
 ## CI Optimization
 

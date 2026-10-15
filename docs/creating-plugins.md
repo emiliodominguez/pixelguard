@@ -193,7 +193,17 @@ interface NotifierInput {
 
 interface DiffResult {
 	unchanged: string[];
-	changed: { name: string; baselinePath: string; currentPath: string; diffPath: string; diffPercentage: number }[];
+	changed: {
+		name: string;
+		baselinePath: string;
+		currentPath: string;
+		diffPath: string;
+		diffPercentage: number;
+		/** Absent when no heatmap could be drawn (the screenshots differ in size) */
+		heatmapPath?: string;
+		/** Changed areas in image pixels, in reading order */
+		regions: { x: number; y: number; width: number; height: number }[];
+	}[];
 	added: string[];
 	removed: string[];
 	/** Shots that could not be captured or compared. Any entry means the run failed. */
@@ -245,7 +255,7 @@ Write each screenshot to `outputDir` as `${shot.name}.png` for the `default` vie
 
 ### Differ: `compare`
 
-Replaces the built-in pixel comparison.
+Replaces the built-in pixel comparison. Your plugin decides whether a shot changed and writes the diff image; for shots it reports as changed, Pixelguard still draws the heatmap and locates the changed areas with its own pixel comparison, so every report view keeps working.
 
 ```typescript
 interface DifferInput {

@@ -600,6 +600,11 @@ fn convert_diff_result(diff_result: &DiffResult) -> ReporterDiffResult {
                 current_path: c.current_path.to_string_lossy().to_string(),
                 diff_path: c.diff_path.to_string_lossy().to_string(),
                 diff_percentage: c.diff_percentage,
+                heatmap_path: c
+                    .heatmap_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().to_string()),
+                regions: c.regions.clone(),
             })
             .collect(),
         added: diff_result.added.clone(),

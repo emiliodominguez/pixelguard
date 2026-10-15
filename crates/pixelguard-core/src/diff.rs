@@ -9,17 +9,29 @@
 //! failure instead of silently counting as unchanged.
 
 use std::collections::HashSet;
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use image::{ImageBuffer, Rgba, RgbaImage};
-use tracing::{debug, info};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{ExtendedColorType, ImageEncoder, Rgba, RgbaImage};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
 
 use crate::capture::{CaptureResult, FailedShot};
 use crate::config::Config;
 use crate::plugins::{
     executor, DifferInput, DifferOutput, LoadedPlugin, PluginCategory, PluginRegistry,
 };
+
+/// Side, in pixels, of the square cells that the heatmap and the change
+/// regions are measured in. Each cell becomes one pixel of the heatmap image.
+pub(crate) const CELL: u32 = 8;
+
+/// Most change regions reported for one screenshot. Nearby changes are merged
+/// until they fit, so a reviewer steps through meaningful areas, not noise.
+const MAX_REGIONS: usize = 64;
 
 /// Result of comparing images.
 #[derive(Debug, Clone, Default)]
@@ -68,6 +80,23 @@ pub struct ChangedShot {
     pub diff_percentage: f64,
     /// Viewport name if multi-viewport (e.g., "mobile"), None for default viewport
     pub viewport: Option<String>,
+    /// Path to the heatmap image, when one could be drawn (both screenshots the same size)
+    pub heatmap_path: Option<PathBuf>,
+    /// Areas that changed, in reading order, for stepping from one difference to the next
+    pub regions: Vec<Region>,
+}
+
+/// A rectangle of a screenshot, in image pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Region {
+    /// Left edge
+    pub x: u32,
+    /// Top edge
+    pub y: u32,
+    /// Width
+    pub width: u32,
+    /// Height
+    pub height: u32,
 }
 
 /// Parses a shot name into base name and viewport.
@@ -161,11 +190,15 @@ where
     let baseline_dir = working_dir.join(&config.output_dir).join("baseline");
     let current_dir = working_dir.join(&config.output_dir).join("current");
     let diff_dir = working_dir.join(&config.output_dir).join("diff");
+    let heatmap_dir = working_dir.join(&config.output_dir).join("heatmap");
 
     crate::capture::ensure_not_symlink(&diff_dir)?;
+    crate::capture::ensure_not_symlink(&heatmap_dir)?;
     crate::capture::ensure_not_symlink(&baseline_dir)?;
     std::fs::create_dir_all(&diff_dir)?;
+    std::fs::create_dir_all(&heatmap_dir)?;
     clear_png_files(&diff_dir)?;
+    clear_png_files(&heatmap_dir)?;
 
     let baseline_shots: HashSet<String> = list_png_stems(&baseline_dir)?.into_iter().collect();
     let differ_plugin = plugin_registry.and_then(|r| r.get(PluginCategory::Differ));
@@ -175,57 +208,68 @@ where
         ..DiffResult::default()
     };
 
+    let mut jobs = Vec::new();
     for shot in &capture.captured {
         let name = &shot.name;
         if !baseline_shots.contains(name) {
             result.added.push(name.clone());
             continue;
         }
+        jobs.push(Job {
+            name: name.clone(),
+            baseline: baseline_dir.join(format!("{}.png", name)),
+            current: current_dir.join(format!("{}.png", name)),
+            diff: diff_dir.join(format!("{}.png", name)),
+            heatmap: heatmap_dir.join(format!("{}.png", name)),
+        });
+    }
 
-        let baseline_path = baseline_dir.join(format!("{}.png", name));
-        let current_path = current_dir.join(format!("{}.png", name));
-        let diff_path = diff_dir.join(format!("{}.png", name));
+    // Built-in comparisons are independent and CPU-bound, so they run in
+    // parallel. Differ plugins are external processes that may share state on
+    // disk, so they run one at a time.
+    let comparisons: Vec<Result<Comparison>> = match differ_plugin {
+        Some(plugin) => jobs
+            .iter()
+            .map(|job| compare_with_plugin(plugin, job, config.threshold, working_dir))
+            .collect(),
+        None => crate::parallel::map(&jobs, config.concurrency, |job| {
+            compare_images(job, config.threshold)
+        }),
+    };
 
-        debug!("🔍 Comparing: {}", name);
-
-        let comparison = match differ_plugin {
-            Some(plugin) => compare_with_plugin(
-                plugin,
-                &baseline_path,
-                &current_path,
-                &diff_path,
-                config.threshold,
-                working_dir,
-            ),
-            None => compare_images(&baseline_path, &current_path, &diff_path, config.threshold),
-        };
-
-        let diff_percentage = match comparison.and_then(validate_percentage) {
+    for (job, comparison) in jobs.into_iter().zip(comparisons) {
+        let comparison = match comparison {
             Ok(value) => value,
             Err(error) => {
                 result.failed.push(FailedShot {
-                    name: name.clone(),
+                    name: job.name,
                     error: format!("{:#}", error),
                 });
                 continue;
             }
         };
 
-        if diff_percentage > config.threshold {
-            info!("⚠️  {}: {:.2}% different", name, diff_percentage);
-            let (_, viewport) = parse_shot_name(name);
+        if comparison.diff_percentage > config.threshold {
+            info!(
+                "⚠️  {}: {:.2}% different",
+                job.name, comparison.diff_percentage
+            );
+            let viewport = parse_shot_name(&job.name).1.map(String::from);
             result.changed.push(ChangedShot {
-                name: name.clone(),
-                baseline_path,
-                current_path,
-                diff_path,
-                diff_percentage,
-                viewport: viewport.map(String::from),
+                name: job.name,
+                baseline_path: job.baseline,
+                current_path: job.current,
+                diff_path: job.diff,
+                diff_percentage: comparison.diff_percentage,
+                viewport,
+                heatmap_path: comparison.heatmap.then_some(job.heatmap),
+                regions: comparison.regions,
             });
         } else {
-            debug!("✅ {}: unchanged", name);
-            result.unchanged.push(name.clone());
-            let _ = std::fs::remove_file(&diff_path);
+            debug!("✅ {}: unchanged", job.name);
+            // A differ plugin may have written a diff image anyway.
+            let _ = std::fs::remove_file(&job.diff);
+            result.unchanged.push(job.name);
         }
     }
 
@@ -301,28 +345,74 @@ fn clear_png_files(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// One screenshot to compare, with the files it reads and writes.
+struct Job {
+    name: String,
+    baseline: PathBuf,
+    current: PathBuf,
+    diff: PathBuf,
+    heatmap: PathBuf,
+}
+
+/// Outcome of comparing one screenshot.
+struct Comparison {
+    /// Percentage of pixels that differ (0.0 to 100.0)
+    diff_percentage: f64,
+    /// Where it changed; empty when unchanged
+    regions: Vec<Region>,
+    /// Whether a heatmap image was written
+    heatmap: bool,
+}
+
 /// Compares two images using a differ plugin.
 ///
-/// Executes the plugin's `compare` hook and returns the diff percentage.
+/// The plugin decides the percentage and writes the diff image. When it
+/// reports a change, the built-in comparison still draws the heatmap and finds
+/// the change regions, so every report view works whichever differ ran; if
+/// that fails, the shot is still reported, without those views.
 fn compare_with_plugin(
     plugin: &LoadedPlugin,
-    baseline_path: &Path,
-    current_path: &Path,
-    diff_path: &Path,
+    job: &Job,
     threshold: f64,
     working_dir: &Path,
-) -> Result<f64> {
+) -> Result<Comparison> {
+    debug!("🔍 Comparing with plugin: {}", job.name);
     let input = DifferInput {
-        baseline_path: baseline_path.to_string_lossy().to_string(),
-        current_path: current_path.to_string_lossy().to_string(),
-        diff_path: diff_path.to_string_lossy().to_string(),
+        baseline_path: job.baseline.to_string_lossy().to_string(),
+        current_path: job.current.to_string_lossy().to_string(),
+        diff_path: job.diff.to_string_lossy().to_string(),
         threshold,
         options: serde_json::Value::Null,
     };
 
     let output: DifferOutput = executor::execute_hook(plugin, "compare", &input, working_dir)?;
+    let diff_percentage = validate_percentage(output.diff_percentage)?;
+    if diff_percentage <= threshold {
+        return Ok(Comparison {
+            diff_percentage,
+            regions: Vec::new(),
+            heatmap: false,
+        });
+    }
 
-    Ok(output.diff_percentage)
+    let (regions, heatmap) = match measure_files(job, threshold)
+        .and_then(|measurement| measurement.write_heatmap(&job.heatmap))
+    {
+        Ok(visuals) => visuals,
+        Err(error) => {
+            warn!(
+                "⚠️  {}: no heatmap or change regions: {:#}",
+                job.name, error
+            );
+            (Vec::new(), false)
+        }
+    };
+
+    Ok(Comparison {
+        diff_percentage,
+        regions,
+        heatmap,
+    })
 }
 
 /// Loads an image, explaining the common Git LFS pointer-file failure.
@@ -347,118 +437,356 @@ fn load_image(path: &Path, label: &str) -> Result<RgbaImage> {
     }
 }
 
-/// Compares two images and generates a diff image.
+/// Compares two images with the built-in pixel comparison.
 ///
-/// Returns the percentage of pixels that differ.
-fn compare_images(
-    baseline_path: &Path,
-    current_path: &Path,
-    diff_path: &Path,
-    threshold: f64,
-) -> Result<f64> {
-    let baseline = load_image(baseline_path, "baseline")?;
-    let current = load_image(current_path, "current")?;
+/// The diff image, heatmap and change regions are only produced for shots
+/// that changed beyond `threshold`; encoding images nobody will look at is
+/// most of the cost of comparing an unchanged screenshot.
+fn compare_images(job: &Job, threshold: f64) -> Result<Comparison> {
+    debug!("🔍 Comparing: {}", job.name);
+    let measurement = measure_files(job, threshold)?;
+    let diff_percentage = validate_percentage(measurement.diff_percentage)?;
+    if diff_percentage <= threshold {
+        return Ok(Comparison {
+            diff_percentage,
+            regions: Vec::new(),
+            heatmap: false,
+        });
+    }
 
-    // Handle size mismatch
+    let (width, height) = measurement.diff_image.dimensions();
+    save_png(&job.diff, measurement.diff_image.as_raw(), width, height)
+        .with_context(|| format!("Failed to save diff image: {}", job.diff.display()))?;
+    let (regions, heatmap) = measurement.write_heatmap(&job.heatmap)?;
+
+    Ok(Comparison {
+        diff_percentage,
+        regions,
+        heatmap,
+    })
+}
+
+/// Pixel-level measurement of a baseline against the current screenshot.
+struct Measurement {
+    diff_percentage: f64,
+    /// Changed pixels in red over a dimmed copy of the current screenshot
+    diff_image: RgbaImage,
+    /// Changed pixels per cell; `None` when the screenshots differ in size
+    grid: Option<ChangeGrid>,
+}
+
+impl Measurement {
+    /// Writes the heatmap image and returns the change regions, with whether a
+    /// heatmap was written. Screenshots of different sizes have no meaningful
+    /// heatmap; their one region is the whole canvas.
+    fn write_heatmap(&self, path: &Path) -> Result<(Vec<Region>, bool)> {
+        let Some(grid) = &self.grid else {
+            let (width, height) = self.diff_image.dimensions();
+            return Ok((
+                vec![Region {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                }],
+                false,
+            ));
+        };
+        let heat = grid.heat_pixels();
+        save_png(path, &heat, grid.columns, grid.rows)
+            .with_context(|| format!("Failed to save heatmap: {}", path.display()))?;
+        Ok((grid.regions(), true))
+    }
+}
+
+/// Loads both screenshots of a job and measures how they differ.
+fn measure_files(job: &Job, threshold: f64) -> Result<Measurement> {
+    let baseline = load_image(&job.baseline, "baseline")?;
+    let current = load_image(&job.current, "current")?;
+    measure(&baseline, &current, threshold)
+        .with_context(|| format!("Could not compare '{}'", job.current.display()))
+}
+
+/// Measures how `current` differs from `baseline`.
+fn measure(baseline: &RgbaImage, current: &RgbaImage, threshold: f64) -> Result<Measurement> {
     if baseline.dimensions() != current.dimensions() {
-        // Create a diff image showing the size difference
+        // Every pixel counts as changed; the diff image shows the larger canvas in red.
         let (bw, bh) = baseline.dimensions();
         let (cw, ch) = current.dimensions();
-        let max_w = bw.max(cw);
-        let max_h = bh.max(ch);
-
-        let mut diff_img: RgbaImage = ImageBuffer::new(max_w, max_h);
-
-        // Fill with red to show size mismatch
-        for pixel in diff_img.pixels_mut() {
-            *pixel = Rgba([255, 0, 0, 255]);
-        }
-
-        diff_img.save(diff_path)?;
-        return Ok(100.0);
+        let diff_image = RgbaImage::from_pixel(bw.max(cw), bh.max(ch), Rgba([255, 0, 0, 255]));
+        return Ok(Measurement {
+            diff_percentage: 100.0,
+            diff_image,
+            grid: None,
+        });
     }
 
-    let (width, height) = baseline.dimensions();
+    let (width, height) = current.dimensions();
     let total_pixels = u64::from(width) * u64::from(height);
     if total_pixels == 0 {
-        anyhow::bail!(
-            "Screenshot '{}' is empty (0 pixels)",
-            current_path.display()
-        );
+        anyhow::bail!("The screenshot is empty (0 pixels)");
     }
+
+    let limit = squared_limit(threshold);
+    let mut grid = ChangeGrid::new(width, height);
+    let mut diff = vec![0u8; current.as_raw().len()];
     let mut diff_count = 0u64;
+    let row_bytes = width as usize * 4;
 
-    let mut diff_img: RgbaImage = ImageBuffer::new(width, height);
-
-    for (x, y, current_pixel) in current.enumerate_pixels() {
-        let baseline_pixel = baseline.get_pixel(x, y);
-
-        if pixels_differ(baseline_pixel, current_pixel, threshold) {
-            diff_count += 1;
-
-            // Create diff pixel: red overlay on dimmed current
-            diff_img.put_pixel(
-                x,
-                y,
-                Rgba([
-                    255,
-                    ((current_pixel[1] as f32) * 0.3) as u8,
-                    ((current_pixel[2] as f32) * 0.3) as u8,
-                    255,
-                ]),
-            );
-        } else {
-            // Dimmed version of current for context
-            diff_img.put_pixel(
-                x,
-                y,
-                Rgba([
-                    ((current_pixel[0] as f32) * 0.5) as u8,
-                    ((current_pixel[1] as f32) * 0.5) as u8,
-                    ((current_pixel[2] as f32) * 0.5) as u8,
-                    current_pixel[3],
-                ]),
-            );
+    for (y, ((before_row, after_row), out_row)) in baseline
+        .as_raw()
+        .chunks_exact(row_bytes)
+        .zip(current.as_raw().chunks_exact(row_bytes))
+        .zip(diff.chunks_exact_mut(row_bytes))
+        .enumerate()
+    {
+        let cell_row = (y / CELL as usize) * grid.columns as usize;
+        for (x, ((before, after), out)) in before_row
+            .chunks_exact(4)
+            .zip(after_row.chunks_exact(4))
+            .zip(out_row.chunks_exact_mut(4))
+            .enumerate()
+        {
+            if before != after && squared_distance(before, after) > limit {
+                diff_count += 1;
+                grid.counts[cell_row + x / CELL as usize] += 1;
+                // Red over the current pixel's dimmed green and blue
+                out[0] = 255;
+                out[1] = (u16::from(after[1]) * 3 / 10) as u8;
+                out[2] = (u16::from(after[2]) * 3 / 10) as u8;
+                out[3] = 255;
+            } else {
+                // Dimmed current for context
+                out[0] = after[0] / 2;
+                out[1] = after[1] / 2;
+                out[2] = after[2] / 2;
+                out[3] = after[3];
+            }
         }
     }
 
-    let diff_percentage = (diff_count as f64 / total_pixels as f64) * 100.0;
+    let diff_image = RgbaImage::from_raw(width, height, diff)
+        .context("Diff buffer does not match the screenshot size")?;
+    Ok(Measurement {
+        diff_percentage: (diff_count as f64 / total_pixels as f64) * 100.0,
+        diff_image,
+        grid: Some(grid),
+    })
+}
 
-    // Only save diff image if there are differences
-    if diff_count > 0 {
-        diff_img
-            .save(diff_path)
-            .with_context(|| format!("Failed to save diff image: {}", diff_path.display()))?;
-    }
+/// Squared RGBA distance above which two pixels count as different.
+///
+/// A pixel differs when its Euclidean RGBA distance, normalized to 0..1 by
+/// the largest possible distance (510), exceeds a tenth of the threshold: a
+/// small per-pixel tolerance for anti-aliasing. Comparing squared distances
+/// gives the same answer without a square root per pixel.
+fn squared_limit(threshold: f64) -> f64 {
+    let limit = threshold * 0.1 * 510.0;
+    limit * limit
+}
 
-    Ok(diff_percentage)
+/// Squared Euclidean distance between two RGBA pixels.
+fn squared_distance(a: &[u8], b: &[u8]) -> f64 {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| {
+            let d = i32::from(*x) - i32::from(*y);
+            (d * d) as u32
+        })
+        .sum::<u32>() as f64
 }
 
 /// Checks if two pixels differ beyond the tolerance threshold.
 ///
 /// Uses color distance calculation with anti-aliasing tolerance.
+#[cfg(test)]
 fn pixels_differ(a: &Rgba<u8>, b: &Rgba<u8>, threshold: f64) -> bool {
-    // Quick check for identical pixels
-    if a == b {
-        return false;
+    a != b && squared_distance(&a.0, &b.0) > squared_limit(threshold)
+}
+
+/// Writes RGBA pixels as a PNG, favoring speed over size: these images are
+/// regenerated on every run and never committed.
+fn save_png(path: &Path, rgba: &[u8], width: u32, height: u32) -> Result<()> {
+    let file =
+        File::create(path).with_context(|| format!("Failed to create {}", path.display()))?;
+    PngEncoder::new_with_quality(
+        BufWriter::new(file),
+        CompressionType::Fast,
+        FilterType::Adaptive,
+    )
+    .write_image(rgba, width, height, ExtendedColorType::Rgba8)
+    .with_context(|| format!("Failed to encode {}", path.display()))
+}
+
+/// Changed pixels counted per `CELL`×`CELL` cell of a screenshot.
+struct ChangeGrid {
+    /// Screenshot width in pixels
+    width: u32,
+    /// Screenshot height in pixels
+    height: u32,
+    columns: u32,
+    rows: u32,
+    /// Row-major counts, `columns * rows` long
+    counts: Vec<u32>,
+}
+
+impl ChangeGrid {
+    fn new(width: u32, height: u32) -> Self {
+        let columns = width.div_ceil(CELL);
+        let rows = height.div_ceil(CELL);
+        Self {
+            width,
+            height,
+            columns,
+            rows,
+            counts: vec![0; columns as usize * rows as usize],
+        }
     }
 
-    // Calculate color distance (simple Euclidean distance in RGB space)
-    let dr = (a[0] as f64 - b[0] as f64).powi(2);
-    let dg = (a[1] as f64 - b[1] as f64).powi(2);
-    let db = (a[2] as f64 - b[2] as f64).powi(2);
-    let da = (a[3] as f64 - b[3] as f64).powi(2);
+    /// Pixels in a cell; cells on the right and bottom edges can be smaller.
+    fn cell_area(&self, column: u32, row: u32) -> u32 {
+        let w = CELL.min(self.width - column * CELL);
+        let h = CELL.min(self.height - row * CELL);
+        w * h
+    }
 
-    let distance = (dr + dg + db + da).sqrt();
+    /// RGBA pixels of the heatmap, one per cell: transparent where nothing
+    /// changed, then amber to crimson, more opaque, as more of the cell changed.
+    /// The report scales it up smoothly over the screenshot, which turns the
+    /// cells into soft glows.
+    fn heat_pixels(&self) -> Vec<u8> {
+        const COOL: [f32; 3] = [255.0, 196.0, 0.0];
+        const HOT: [f32; 3] = [225.0, 29.0, 72.0];
 
-    // Normalize to 0-1 range (max distance is sqrt(4 * 255^2) = 510)
-    let normalized = distance / 510.0;
+        let mut pixels = vec![0u8; self.counts.len() * 4];
+        for (index, (count, pixel)) in self
+            .counts
+            .iter()
+            .zip(pixels.chunks_exact_mut(4))
+            .enumerate()
+        {
+            if *count == 0 {
+                continue;
+            }
+            let column = index as u32 % self.columns;
+            let row = index as u32 / self.columns;
+            // Square root so a few changed pixels still show clearly.
+            let share = (*count as f32 / self.cell_area(column, row) as f32).sqrt();
+            for channel in 0..3 {
+                pixel[channel] = (COOL[channel] + (HOT[channel] - COOL[channel]) * share) as u8;
+            }
+            pixel[3] = (120.0 + 135.0 * share) as u8;
+        }
+        pixels
+    }
 
-    // Apply anti-aliasing tolerance
-    // We use a small threshold per-pixel to account for anti-aliasing differences
-    let pixel_threshold = threshold * 0.1;
+    /// Groups changed cells into rectangles in reading order.
+    ///
+    /// Changed cells separated by at most `2 × reach` unchanged cells belong
+    /// to the same region. `reach` starts at two cells (up to 32px gaps) and
+    /// doubles while there are more than `MAX_REGIONS`, merging scattered
+    /// changes into fewer, larger areas.
+    fn regions(&self) -> Vec<Region> {
+        let mut reach = 2;
+        loop {
+            let regions = self.regions_within(reach);
+            if regions.len() <= MAX_REGIONS || reach >= self.columns.max(self.rows) as usize {
+                return regions;
+            }
+            reach *= 2;
+        }
+    }
 
-    normalized > pixel_threshold
+    fn regions_within(&self, reach: usize) -> Vec<Region> {
+        let columns = self.columns as usize;
+        let rows = self.rows as usize;
+        let changed: Vec<bool> = self.counts.iter().map(|count| *count > 0).collect();
+        let grown = dilate(&changed, columns, rows, reach);
+
+        // Label 8-connected areas of the grown mask; each original changed cell
+        // widens the bounds of the area it falls in.
+        let mut labels = vec![usize::MAX; grown.len()];
+        let mut bounds: Vec<[usize; 4]> = Vec::new();
+        let mut stack = Vec::new();
+        for start in 0..grown.len() {
+            if !changed[start] || labels[start] != usize::MAX {
+                continue;
+            }
+            let label = bounds.len();
+            bounds.push([usize::MAX, usize::MAX, 0, 0]);
+            labels[start] = label;
+            stack.push(start);
+            while let Some(index) = stack.pop() {
+                let (column, row) = (index % columns, index / columns);
+                if changed[index] {
+                    let b = &mut bounds[label];
+                    b[0] = b[0].min(column);
+                    b[1] = b[1].min(row);
+                    b[2] = b[2].max(column);
+                    b[3] = b[3].max(row);
+                }
+                for dy in -1i64..=1 {
+                    for dx in -1i64..=1 {
+                        let (c, r) = (column as i64 + dx, row as i64 + dy);
+                        if c < 0 || r < 0 || c >= columns as i64 || r >= rows as i64 {
+                            continue;
+                        }
+                        let neighbor = r as usize * columns + c as usize;
+                        if grown[neighbor] && labels[neighbor] == usize::MAX {
+                            labels[neighbor] = label;
+                            stack.push(neighbor);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut regions: Vec<Region> = bounds
+            .into_iter()
+            .map(|[left, top, right, bottom]| {
+                let x = left as u32 * CELL;
+                let y = top as u32 * CELL;
+                Region {
+                    x,
+                    y,
+                    width: ((right as u32 + 1) * CELL).min(self.width) - x,
+                    height: ((bottom as u32 + 1) * CELL).min(self.height) - y,
+                }
+            })
+            .collect();
+        regions.sort_by_key(|region| (region.y, region.x));
+        regions
+    }
+}
+
+/// Grows every set cell of a `columns`×`rows` mask by `reach` cells in each
+/// direction (a square dilation), in linear time using running sums.
+fn dilate(mask: &[bool], columns: usize, rows: usize, reach: usize) -> Vec<bool> {
+    let mut horizontal = vec![false; mask.len()];
+    let mut sums = vec![0u32; columns.max(rows) + 1];
+    for row in 0..rows {
+        for column in 0..columns {
+            sums[column + 1] = sums[column] + u32::from(mask[row * columns + column]);
+        }
+        for column in 0..columns {
+            let from = column.saturating_sub(reach);
+            let to = (column + reach + 1).min(columns);
+            horizontal[row * columns + column] = sums[to] > sums[from];
+        }
+    }
+
+    let mut grown = vec![false; mask.len()];
+    for column in 0..columns {
+        for row in 0..rows {
+            sums[row + 1] = sums[row] + u32::from(horizontal[row * columns + column]);
+        }
+        for row in 0..rows {
+            let from = row.saturating_sub(reach);
+            let to = (row + reach + 1).min(rows);
+            grown[row * columns + column] = sums[to] > sums[from];
+        }
+    }
+    grown
 }
 
 /// Checks if a baseline exists for comparison.
@@ -486,6 +814,163 @@ pub fn has_baseline<P: AsRef<Path>>(config: &Config, working_dir: P) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::ImageBuffer;
+
+    #[test]
+    fn squared_comparison_matches_the_normalized_distance_rule() {
+        let samples = [
+            ([10, 20, 30, 255], [10, 20, 30, 255]),
+            ([100, 100, 100, 255], [102, 101, 99, 255]),
+            ([0, 0, 0, 255], [3, 0, 0, 255]),
+            ([0, 0, 0, 0], [255, 255, 255, 255]),
+            ([200, 10, 90, 128], [190, 30, 80, 140]),
+        ];
+        for threshold in [0.0, 0.01, 0.1, 0.5, 1.0] {
+            for (a, b) in samples {
+                let distance = a
+                    .iter()
+                    .zip(b)
+                    .map(|(x, y)| (*x as f64 - y as f64).powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                let expected = a != b && distance / 510.0 > threshold * 0.1;
+                assert_eq!(
+                    pixels_differ(&Rgba(a), &Rgba(b), threshold),
+                    expected,
+                    "{:?} vs {:?} at {}",
+                    a,
+                    b,
+                    threshold
+                );
+            }
+        }
+    }
+
+    /// A white 200×120 image with black boxes at the given (x, y, w, h).
+    fn with_boxes(boxes: &[(u32, u32, u32, u32)]) -> RgbaImage {
+        let mut image = RgbaImage::from_pixel(200, 120, Rgba([255, 255, 255, 255]));
+        for &(x0, y0, w, h) in boxes {
+            for y in y0..y0 + h {
+                for x in x0..x0 + w {
+                    image.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+                }
+            }
+        }
+        image
+    }
+
+    #[test]
+    fn separate_changes_become_regions_in_reading_order() {
+        let baseline = with_boxes(&[]);
+        let current = with_boxes(&[(150, 10, 10, 10), (10, 80, 20, 12), (12, 12, 6, 6)]);
+
+        let measurement = measure(&baseline, &current, 0.1).unwrap();
+        let regions = measurement.grid.as_ref().unwrap().regions();
+
+        assert_eq!(regions.len(), 3);
+        // Reading order: top to bottom, then left to right.
+        assert_eq!((regions[0].x, regions[0].y), (8, 8));
+        assert_eq!((regions[1].x, regions[1].y), (144, 8));
+        assert_eq!((regions[2].x, regions[2].y), (8, 80));
+        // Each region covers its change, rounded out to whole cells.
+        assert!(regions[2].width >= 20 && regions[2].height >= 12);
+    }
+
+    #[test]
+    fn nearby_changes_merge_into_one_region() {
+        let baseline = with_boxes(&[]);
+        let current = with_boxes(&[(20, 20, 4, 4), (34, 20, 4, 4)]);
+
+        let measurement = measure(&baseline, &current, 0.1).unwrap();
+
+        assert_eq!(measurement.grid.unwrap().regions().len(), 1);
+    }
+
+    #[test]
+    fn scattered_noise_is_merged_down_to_a_reviewable_number_of_regions() {
+        let baseline = RgbaImage::from_pixel(800, 800, Rgba([255, 255, 255, 255]));
+        let mut current = baseline.clone();
+        // 100 isolated dots, too far apart to merge at the first reach.
+        for y in (0..800).step_by(80) {
+            for x in (0..800).step_by(80) {
+                current.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        let measurement = measure(&baseline, &current, 0.1).unwrap();
+        let regions = measurement.grid.unwrap().regions();
+
+        assert!(!regions.is_empty());
+        assert!(regions.len() <= MAX_REGIONS, "{} regions", regions.len());
+    }
+
+    #[test]
+    fn heatmap_has_one_pixel_per_cell_and_marks_only_changed_cells() {
+        let baseline = with_boxes(&[]);
+        let current = with_boxes(&[(0, 0, 8, 8)]);
+        let grid = measure(&baseline, &current, 0.1).unwrap().grid.unwrap();
+
+        let heat = grid.heat_pixels();
+
+        assert_eq!((grid.columns, grid.rows), (25, 15));
+        assert_eq!(heat.len(), 25 * 15 * 4);
+        assert_eq!(heat[3], 255, "a fully changed cell is fully opaque");
+        assert_eq!(heat[7], 0, "an unchanged cell is transparent");
+    }
+
+    #[test]
+    fn changed_shots_get_diff_heatmap_and_regions_unchanged_get_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::default();
+        let baseline = dir.path().join(".pixelguard/baseline");
+        let current = dir.path().join(".pixelguard/current");
+        std::fs::create_dir_all(&baseline).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        with_boxes(&[]).save(baseline.join("moved.png")).unwrap();
+        with_boxes(&[(40, 40, 30, 30)])
+            .save(current.join("moved.png"))
+            .unwrap();
+        with_boxes(&[]).save(baseline.join("same.png")).unwrap();
+        with_boxes(&[]).save(current.join("same.png")).unwrap();
+
+        let capture = captured(&current, &["moved", "same"]);
+        let known: HashSet<String> = ["moved".to_string(), "same".to_string()]
+            .into_iter()
+            .collect();
+        let result = diff_captured(&config, dir.path(), None, &capture, &known, |_| true).unwrap();
+
+        assert_eq!(result.unchanged, vec!["same".to_string()]);
+        let moved = &result.changed[0];
+        assert_eq!(moved.regions.len(), 1);
+        assert!(moved.diff_path.is_file());
+        assert!(moved.heatmap_path.as_ref().unwrap().is_file());
+        assert!(!dir.path().join(".pixelguard/diff/same.png").exists());
+        assert!(!dir.path().join(".pixelguard/heatmap/same.png").exists());
+    }
+
+    #[test]
+    fn size_changes_have_one_whole_canvas_region_and_no_heatmap() {
+        let baseline = RgbaImage::from_pixel(100, 50, Rgba([255, 255, 255, 255]));
+        let current = RgbaImage::from_pixel(100, 80, Rgba([255, 255, 255, 255]));
+        let dir = tempfile::tempdir().unwrap();
+
+        let measurement = measure(&baseline, &current, 0.1).unwrap();
+        let (regions, heatmap) = measurement
+            .write_heatmap(&dir.path().join("heat.png"))
+            .unwrap();
+
+        assert_eq!(measurement.diff_percentage, 100.0);
+        assert!(!heatmap);
+        assert_eq!(
+            regions,
+            vec![Region {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 80
+            }]
+        );
+    }
 
     #[test]
     fn identical_pixels_do_not_differ() {
@@ -548,6 +1033,8 @@ mod tests {
                 diff_path: PathBuf::new(),
                 diff_percentage: 1.0,
                 viewport: None,
+                heatmap_path: None,
+                regions: Vec::new(),
             }],
             added: Vec::new(),
             removed: Vec::new(),

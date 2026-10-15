@@ -40,6 +40,7 @@ dist
 # Note: Users should commit .pixelguard/baseline/ to their repos
 **/.pixelguard/current/
 **/.pixelguard/diff/
+**/.pixelguard/heatmap/
 **/.pixelguard/report.html
 **/.pixelguard/results.json
 

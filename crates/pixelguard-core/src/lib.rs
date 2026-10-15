@@ -33,6 +33,7 @@ pub mod capture;
 pub mod config;
 pub mod detect;
 pub mod diff;
+mod parallel;
 pub mod plugins;
 pub mod process;
 pub mod report;

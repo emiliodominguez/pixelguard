@@ -49,6 +49,23 @@ export interface ChangedShot {
     diffPath: string;
     /** Percentage of pixels that differ (0-100) */
     diffPercentage: number;
+    /** Path to the heatmap image; absent when none could be drawn (e.g. the screenshots differ in size) */
+    heatmapPath?: string;
+    /** Areas that changed, in image pixels and reading order */
+    regions: Region[];
+}
+/**
+ * A rectangle of a screenshot, in image pixels.
+ */
+export interface Region {
+    /** Left edge */
+    x: number;
+    /** Top edge */
+    y: number;
+    /** Width */
+    width: number;
+    /** Height */
+    height: number;
 }
 /**
  * Configuration summary for reporter plugins.

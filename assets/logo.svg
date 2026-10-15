@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="128" height="128" fill="none" role="img" aria-label="Pixelguard">
+	<title>Pixelguard</title>
+	<style>
+		.ink { fill: #18181b; }
+		.ghost { stroke: #18181b; stroke-opacity: 0.4; }
+		.changed { fill: #b45309; }
+		@media (prefers-color-scheme: dark) {
+			.ink { fill: #ececef; }
+			.ghost { stroke: #ececef; }
+			.changed { fill: #e0a43a; }
+		}
+	</style>
+	<!-- A 2x2 pixel grid where one pixel slipped out of place: a visual diff, caught. -->
+	<rect class="ink" x="3" y="3" width="11" height="11" rx="2" />
+	<rect class="ink" x="17" y="3" width="11" height="11" rx="2" />
+	<rect class="ink" x="3" y="17" width="11" height="11" rx="2" />
+	<rect class="ghost" x="17.75" y="17.75" width="9.5" height="9.5" rx="1.6" stroke-width="1.5" />
+	<rect class="changed" x="20" y="20" width="11" height="11" rx="2" />
+</svg>

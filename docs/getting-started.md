@@ -140,6 +140,8 @@ start .pixelguard/report.html  # Windows
 
 The HTML report includes powerful review tools:
 
+- **Comparison views** (keys `1`–`6`): side by side, a before/after slider, flicker (alternates baseline and current in place; `f` pauses), a heatmap of where pixels changed, the diff image, and Changes, which shows one changed area at a time with baseline and current cropped side by side
+- **Step through differences**: `n` and `p` move to the next and previous changed area across the whole report
 - **Filter & Search**: Search shots by name and filter by status (Changed, Added, Removed)
 - **Sort Options**: Sort by name or diff percentage
 - **Approve/Reject**: Click approve or reject on each changed shot
@@ -203,6 +205,7 @@ your-project/
     ├── baseline/             # Reference screenshots (commit these)
     ├── current/              # Latest captures (generated)
     ├── diff/                 # Visual diffs (generated)
+    ├── heatmap/              # Change heatmaps (generated)
     └── report.html           # HTML report (generated)
 ```
 
@@ -359,6 +362,7 @@ The `test` command generates several files:
 | `baseline/*.png` | Baseline screenshots (commit these) |
 | `current/*.png` | Current screenshots from the latest run |
 | `diff/*.png` | Visual diff images highlighting changes |
+| `heatmap/*.png` | Change heatmaps, one pixel per 8×8 area of the screenshot (absent when the screenshots differ in size) |
 
 The `results.json` file is useful for CI integration and custom tooling:
 
@@ -376,7 +380,12 @@ The `results.json` file is useful for CI integration and custom tooling:
   },
   "results": {
     "changed": [
-      { "name": "button--primary", "diffPercentage": 5.5 }
+      {
+        "name": "button--primary",
+        "diffPercentage": 5.5,
+        "heatmapPath": "heatmap/button--primary.png",
+        "regions": [{ "x": 96, "y": 200, "width": 184, "height": 40 }]
+      }
     ],
     "added": [],
     "removed": [],

@@ -363,6 +363,14 @@ pub struct ReporterChangedShot {
 
     /// Diff percentage
     pub diff_percentage: f64,
+
+    /// Path to the heatmap image, when one was drawn
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heatmap_path: Option<String>,
+
+    /// Areas that changed, in image pixels and reading order
+    #[serde(default)]
+    pub regions: Vec<crate::diff::Region>,
 }
 
 /// Config summary for reporter input.

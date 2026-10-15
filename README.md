@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" width="56" height="56" alt="Pixelguard logo">
+
 # Pixelguard
 
 Open-source visual regression testing CLI. Zero config, git-friendly, no backend required.
@@ -8,7 +10,7 @@ Open-source visual regression testing CLI. Zero config, git-friendly, no backend
 - **Git-Friendly** — Screenshots stored in `.pixelguard/`, committed to your repo
 - **Fast** — Written in Rust with parallel screenshot capture
 - **No Backend** — Everything runs locally or in CI
-- **Beautiful Reports** — Interactive HTML reports with filtering, search, and approval workflow
+- **Beautiful Reports** — Interactive HTML reports with six comparison views (side by side, slider, flicker, heatmap, diff, and stepping through each changed area), filtering, search, and approval workflow
 - **Review Workflows** — Approve/reject changes in browser or interactive CLI
 - **Selective Updates** — Update specific shots without affecting others
 - **Extensible** — Plugin system for custom storage, reporters, and notifiers
@@ -396,11 +398,13 @@ Screenshots and reports are stored in `.pixelguard/`:
 │   └── card--default.png
 ├── diff/              # Visual diffs
 │   └── card--default.png
+├── heatmap/           # Where pixels changed, one pixel per 8×8 area
+│   └── card--default.png
 ├── report.html        # Interactive HTML report
 └── results.json       # Machine-readable JSON export
 ```
 
-Commit the `baseline/` directory to your repository. The `current/`, `diff/`, `report.html`, and `results.json` are regenerated on each run.
+Commit the `baseline/` directory to your repository. The `current/`, `diff/`, `heatmap/`, `report.html`, and `results.json` are regenerated on each run.
 
 For large projects, consider using [Git LFS](https://git-lfs.github.com/) for PNG files.
 
@@ -420,7 +424,12 @@ The `results.json` file is generated alongside the HTML report for CI integratio
   },
   "results": {
     "changed": [
-      { "name": "button--primary", "diffPercentage": 5.5 }
+      {
+        "name": "button--primary",
+        "diffPercentage": 5.5,
+        "heatmapPath": "heatmap/button--primary.png",
+        "regions": [{ "x": 96, "y": 200, "width": 184, "height": 40 }]
+      }
     ]
   }
 }

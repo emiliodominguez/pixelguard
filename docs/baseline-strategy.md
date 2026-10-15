@@ -13,7 +13,8 @@ Baselines are the "expected" screenshots that new screenshots are compared again
 │   ├── card--default.png
 │   └── modal--open.png
 ├── current/            # Latest captures (gitignored)
-└── diff/               # Difference images (gitignored)
+├── diff/               # Difference images (gitignored)
+└── heatmap/            # Change heatmaps (gitignored)
 ```
 
 ## Core Principles
@@ -103,6 +104,7 @@ Add to `.gitignore`:
 # Pixelguard
 .pixelguard/current/
 .pixelguard/diff/
+.pixelguard/heatmap/
 .pixelguard/report.html
 ```
 
@@ -291,8 +293,11 @@ Some teams auto-update baselines in CI. Use with care:
 
 The report at `.pixelguard/report.html` provides:
 - Side-by-side comparison
+- Before/after slider
+- Flicker between baseline and current
+- Heatmap of where pixels changed
 - Diff overlay visualization
-- Comparison slider
+- Changes: step through each changed area (`n`/`p`)
 - Zoom for detailed inspection
 
 ### GitHub PR Review Tips

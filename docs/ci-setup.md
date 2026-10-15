@@ -114,6 +114,7 @@ visual-regression:
     paths:
       - .pixelguard/report.html
       - .pixelguard/diff/
+      - .pixelguard/heatmap/
     expire_in: 1 week
   only:
     - merge_requests

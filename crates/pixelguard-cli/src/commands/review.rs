@@ -58,6 +58,9 @@ struct ChangedShot {
     /// SHA-256 of the current image when the report was generated
     #[serde(default)]
     current_hash: Option<String>,
+    /// Areas that changed; only counted here
+    #[serde(default)]
+    regions: Vec<serde_json::Value>,
 }
 
 /// Action the user can take for each shot.
@@ -67,6 +70,7 @@ enum ReviewAction {
     Reject,
     Skip,
     ViewDiff,
+    ViewHeatmap,
     Quit,
 }
 
@@ -77,6 +81,7 @@ impl std::fmt::Display for ReviewAction {
             ReviewAction::Reject => write!(f, "Reject (keep baseline)"),
             ReviewAction::Skip => write!(f, "Skip (decide later)"),
             ReviewAction::ViewDiff => write!(f, "View diff image"),
+            ReviewAction::ViewHeatmap => write!(f, "View heatmap image"),
             ReviewAction::Quit => write!(f, "Quit review"),
         }
     }
@@ -143,21 +148,28 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
         ReviewAction::Reject,
         ReviewAction::Skip,
         ReviewAction::ViewDiff,
+        ReviewAction::ViewHeatmap,
         ReviewAction::Quit,
     ];
 
     'review: for (i, shot) in changed.iter().enumerate() {
         if args.open_diff {
-            open_diff(&output_dir, &shot.name);
+            open_image(&output_dir, Visual::Diff, &shot.name);
         }
 
         loop {
+            let areas = match shot.regions.len() {
+                0 => String::new(),
+                1 => ", 1 area".to_string(),
+                count => format!(", {} areas", count),
+            };
             println!(
-                "\n[{}/{}] {} ({:.2}% different)",
+                "\n[{}/{}] {} ({:.2}% different{})",
                 i + 1,
                 changed.len(),
                 shot.name,
-                shot.diff_percentage
+                shot.diff_percentage,
+                areas
             );
 
             let selection = Select::with_theme(&theme)
@@ -182,7 +194,8 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
                     println!("  \u{2192} Skipped: {}", shot.name);
                     break;
                 }
-                ReviewAction::ViewDiff => open_diff(&output_dir, &shot.name),
+                ReviewAction::ViewDiff => open_image(&output_dir, Visual::Diff, &shot.name),
+                ReviewAction::ViewHeatmap => open_image(&output_dir, Visual::Heatmap, &shot.name),
                 ReviewAction::Quit => {
                     println!("\nQuitting review...");
                     skipped += changed.len() - i;
@@ -258,18 +271,43 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
     Ok(())
 }
 
-/// Opens the diff image for a validated screenshot name.
+/// An image generated for a changed screenshot.
+#[derive(Debug, Clone, Copy)]
+enum Visual {
+    Diff,
+    Heatmap,
+}
+
+impl Visual {
+    fn folder(self) -> &'static str {
+        match self {
+            Visual::Diff => "diff",
+            Visual::Heatmap => "heatmap",
+        }
+    }
+}
+
+/// Opens the diff or heatmap image for a validated screenshot name.
 ///
 /// The path is derived from the name, never read from results.json, so a
 /// tampered results file cannot make this open an arbitrary file or app.
-fn open_diff(output_dir: &std::path::Path, name: &str) {
-    let diff_path = output_dir.join("diff").join(format!("{}.png", name));
-    if !diff_path.is_file() {
-        eprintln!("  Diff image not found at {}", diff_path.display());
+fn open_image(output_dir: &std::path::Path, visual: Visual, name: &str) {
+    let path = output_dir
+        .join(visual.folder())
+        .join(format!("{}.png", name));
+    if !path.is_file() {
+        match visual {
+            Visual::Diff => eprintln!("  Diff image not found at {}", path.display()),
+            // Screenshots that changed size have no heatmap.
+            Visual::Heatmap => eprintln!(
+                "  No heatmap at {}; the screenshots may differ in size",
+                path.display()
+            ),
+        }
         return;
     }
-    match open::that(&diff_path) {
-        Ok(()) => println!("  Opened diff image"),
-        Err(e) => eprintln!("Could not open diff image: {}", e),
+    match open::that(&path) {
+        Ok(()) => println!("  Opened {} image", visual.folder()),
+        Err(e) => eprintln!("Could not open {} image: {}", visual.folder(), e),
     }
 }

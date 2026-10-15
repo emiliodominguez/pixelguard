@@ -128,8 +128,8 @@ pub fn prepare_current_dir(config: &Config, working_dir: &Path) -> Result<PathBu
 
 /// Refuses to use a screenshot directory that is a symbolic link.
 ///
-/// Pixelguard writes into and deletes PNGs from `current/`, `diff/` and
-/// `baseline/`. A repository could commit one of them as a symlink to an
+/// Pixelguard writes into and deletes PNGs from `current/`, `diff/`,
+/// `heatmap/` and `baseline/`. A repository could commit one of them as a symlink to an
 /// unrelated directory, which would turn that cleanup into deleting files
 /// elsewhere on the machine.
 ///
