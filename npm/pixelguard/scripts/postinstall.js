@@ -3,14 +3,18 @@
 /**
  * @fileoverview Postinstall script for Pixelguard npm package.
  *
- * Downloads the correct prebuilt binary for the current platform from GitHub releases.
- * Supports macOS (x64/arm64), Linux (x64/arm64), and Windows (x64).
+ * Downloads the prebuilt binary for the current platform from GitHub releases and
+ * verifies it against the SHA-256 checksums shipped inside this npm package before
+ * it is ever made executable. The download goes to a temporary file that is only
+ * renamed into place after verification, so an interrupted or tampered download can
+ * never be left behind as the binary.
  *
  * @module postinstall
  * @author Pixelguard Contributors
  * @license MIT
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
@@ -28,6 +32,24 @@ const PACKAGE_VERSION = require("../package.json").version;
 const GITHUB_REPO = "emiliodominguez/pixelguard";
 
 /**
+ * Maximum number of HTTP redirects to follow.
+ * @constant {number}
+ */
+const MAX_REDIRECTS = 5;
+
+/**
+ * Socket inactivity timeout for the download, in milliseconds.
+ * @constant {number}
+ */
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/**
+ * Upper bound for the binary size, in bytes.
+ * @constant {number}
+ */
+const MAX_BINARY_BYTES = 200 * 1024 * 1024;
+
+/**
  * Mapping of Node.js platform/arch combinations to Rust target triples.
  * @constant {Object<string, string>}
  */
@@ -40,163 +62,183 @@ const PLATFORM_MAP = {
 };
 
 /**
- * Gets the platform key for the current system.
- *
- * @returns {string} Platform key in format "{platform}-{arch}"
- * @example
- * // On macOS ARM
- * getPlatformKey() // => "darwin-arm64"
- */
-function getPlatformKey() {
-	return `${process.platform}-${process.arch}`;
-}
-
-/**
  * Gets the Rust target triple for the current platform.
  *
- * @returns {string} Rust target triple (e.g., "x86_64-apple-darwin")
- * @throws {Error} Exits process with code 1 if platform is unsupported
- * @example
- * // On Linux x64
- * getTargetTriple() // => "x86_64-unknown-linux-gnu"
+ * @returns {string | null} Rust target triple, or null if the platform is unsupported
  */
 function getTargetTriple() {
-	const key = getPlatformKey();
-	const triple = PLATFORM_MAP[key];
-
-	if (!triple) {
-		console.error(`Unsupported platform: ${key}`);
-		console.error(`Supported platforms: ${Object.keys(PLATFORM_MAP).join(", ")}`);
-		process.exit(1);
-	}
-
-	return triple;
+	return PLATFORM_MAP[`${process.platform}-${process.arch}`] ?? null;
 }
 
 /**
  * Gets the binary filename for the current platform.
  *
- * @returns {string} Binary filename ("pixelguard" or "pixelguard.exe" on Windows)
- * @example
- * // On Windows
- * getBinaryName() // => "pixelguard.exe"
- * // On Unix
- * getBinaryName() // => "pixelguard"
+ * @returns {string} "pixelguard.exe" on Windows, "pixelguard" elsewhere
  */
 function getBinaryName() {
 	return process.platform === "win32" ? "pixelguard.exe" : "pixelguard";
 }
 
 /**
- * Constructs the GitHub release download URL for the binary.
+ * Gets the release asset name for a target triple.
  *
  * @param {string} triple - Rust target triple
- * @returns {string} Full download URL for the binary
- * @example
- * getDownloadUrl("x86_64-apple-darwin")
- * // => "https://github.com/emiliodominguez/pixelguard/releases/download/v0.1.0/pixelguard-x86_64-apple-darwin"
+ * @returns {string} Asset name, e.g. "pixelguard-aarch64-apple-darwin"
  */
-function getDownloadUrl(triple) {
-	return `https://github.com/${GITHUB_REPO}/releases/download/v${PACKAGE_VERSION}/pixelguard-${triple}${
-		process.platform === "win32" ? ".exe" : ""
-	}`;
+function getAssetName(triple) {
+	return `pixelguard-${triple}${process.platform === "win32" ? ".exe" : ""}`;
 }
 
 /**
- * Downloads a file from a URL to a local destination.
- * Handles HTTP redirects automatically.
+ * Reads the expected SHA-256 for an asset from the checksums bundled in this package.
  *
- * @param {string} url - URL to download from
- * @param {string} dest - Local file path to save to
- * @returns {Promise<void>} Resolves when download completes
- * @throws {Error} Rejects if download fails or returns non-200 status
- * @example
- * await downloadFile("https://example.com/file.bin", "/tmp/file.bin");
+ * @param {string} assetName - Release asset name
+ * @returns {string | null} Lowercase hex digest, or null when no checksum is known
  */
-function downloadFile(url, dest) {
+function getExpectedChecksum(assetName) {
+	try {
+		const checksums = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "checksums.json"), "utf8"));
+		const digest = checksums[assetName];
+		return typeof digest === "string" && /^[a-f0-9]{64}$/i.test(digest) ? digest.toLowerCase() : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Computes the SHA-256 of a file.
+ *
+ * @param {string} filePath - File to hash
+ * @returns {string} Lowercase hex digest
+ */
+function sha256File(filePath) {
+	return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+/**
+ * Downloads a URL to a file over HTTPS, following a bounded number of HTTPS redirects.
+ *
+ * @param {string} url - HTTPS URL to download
+ * @param {string} dest - Destination file path (created exclusively)
+ * @param {number} [redirectsLeft] - Remaining redirects allowed
+ * @returns {Promise<void>} Resolves when the file is completely written
+ */
+function downloadFile(url, dest, redirectsLeft = MAX_REDIRECTS) {
 	return new Promise((resolve, reject) => {
-		const file = fs.createWriteStream(dest);
+		if (!url.startsWith("https://")) {
+			reject(new Error(`Refusing to download over a non-HTTPS URL: ${url}`));
+			return;
+		}
 
-		const request = (url) => {
-			https
-				.get(url, (response) => {
-					// Handle redirects
-					if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-						request(response.headers.location);
-						return;
-					}
+		const request = https.get(url, (response) => {
+			const { statusCode, headers } = response;
 
-					if (response.statusCode !== 200) {
-						reject(new Error(`Failed to download: ${response.statusCode}`));
-						return;
-					}
+			if (statusCode >= 300 && statusCode < 400 && headers.location) {
+				response.resume();
+				if (redirectsLeft <= 0) {
+					reject(new Error("Too many redirects"));
+					return;
+				}
+				const next = new URL(headers.location, url).toString();
+				downloadFile(next, dest, redirectsLeft - 1).then(resolve, reject);
+				return;
+			}
 
-					response.pipe(file);
-					file.on("finish", () => {
-						file.close(resolve);
-					});
-				})
-				.on("error", (err) => {
-					fs.unlink(dest, () => {});
-					reject(err);
-				});
-		};
+			if (statusCode !== 200) {
+				response.resume();
+				reject(new Error(`Download failed with HTTP ${statusCode}`));
+				return;
+			}
 
-		request(url);
+			let received = 0;
+			const file = fs.createWriteStream(dest, { flags: "wx", mode: 0o600 });
+			response.on("data", (chunk) => {
+				received += chunk.length;
+				if (received > MAX_BINARY_BYTES) {
+					request.destroy(new Error("Download exceeds the maximum binary size"));
+				}
+			});
+			response.on("error", reject);
+			file.on("error", reject);
+			file.on("finish", () => file.close(resolve));
+			response.pipe(file);
+		});
+
+		request.setTimeout(DOWNLOAD_TIMEOUT_MS, () => request.destroy(new Error("Download timed out")));
+		request.on("error", reject);
 	});
+}
+
+/**
+ * Prints instructions for installing without the prebuilt binary.
+ *
+ * @param {string} reason - Why the prebuilt binary is not available
+ */
+function printFallback(reason) {
+	console.error(`Pixelguard binary not installed: ${reason}`);
+	console.error("");
+	console.error("You can build it from source and point the wrapper at it:");
+	console.error("  git clone https://github.com/emiliodominguez/pixelguard.git");
+	console.error("  cd pixelguard && cargo build --release");
+	console.error("  export PIXELGUARD_BINARY=$PWD/target/release/pixelguard");
 }
 
 /**
  * Main entry point for the postinstall script.
  *
- * Downloads the Pixelguard binary for the current platform if it doesn't exist.
- * On failure, prints instructions for building from source and exits gracefully
- * (exit code 0) to not block npm install.
+ * Never fails the surrounding `npm install`; problems are reported and the wrapper
+ * explains them again when it is run.
  *
- * @async
  * @returns {Promise<void>}
  */
 async function main() {
 	const triple = getTargetTriple();
-	const binaryName = getBinaryName();
-	const binDir = path.join(__dirname, "..", "bin");
-	const binaryPath = path.join(binDir, binaryName);
-
-	// Create bin directory
-	if (!fs.existsSync(binDir)) {
-		fs.mkdirSync(binDir, { recursive: true });
-	}
-
-	// Check if binary already exists
-	if (fs.existsSync(binaryPath)) {
-		console.log("Pixelguard binary already exists, skipping download.");
+	if (!triple) {
+		printFallback(`unsupported platform ${process.platform}-${process.arch}`);
 		return;
 	}
 
-	const url = getDownloadUrl(triple);
+	const assetName = getAssetName(triple);
+	const expected = getExpectedChecksum(assetName);
+	if (!expected) {
+		printFallback(`no published checksum for ${assetName} in this package version`);
+		return;
+	}
+
+	const binDir = path.join(__dirname, "..", "bin");
+	const binaryPath = path.join(binDir, getBinaryName());
+	fs.mkdirSync(binDir, { recursive: true });
+
+	if (fs.existsSync(binaryPath) && sha256File(binaryPath) === expected) {
+		console.log("Pixelguard binary already installed and verified.");
+		return;
+	}
+
+	const url = `https://github.com/${GITHUB_REPO}/releases/download/v${PACKAGE_VERSION}/${assetName}`;
+	const tempPath = `${binaryPath}.download-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 	console.log(`Downloading Pixelguard for ${triple}...`);
-	console.log(`URL: ${url}`);
 
 	try {
-		await downloadFile(url, binaryPath);
+		await downloadFile(url, tempPath);
 
-		// Make executable on Unix
-		if (process.platform !== "win32") {
-			fs.chmodSync(binaryPath, 0o755);
+		const actual = sha256File(tempPath);
+		if (actual !== expected) {
+			throw new Error(`checksum mismatch for ${assetName} (expected ${expected}, got ${actual})`);
 		}
 
-		console.log("Pixelguard installed successfully!");
+		if (process.platform !== "win32") {
+			fs.chmodSync(tempPath, 0o755);
+		}
+		fs.renameSync(tempPath, binaryPath);
+		console.log("Pixelguard installed and verified successfully!");
 	} catch (err) {
-		console.error(`Failed to download Pixelguard: ${err.message}`);
-		console.error("");
-		console.error("You can try building from source:");
-		console.error("  git clone https://github.com/emiliodominguez/pixelguard.git");
-		console.error("  cd pixelguard && cargo build --release");
-		console.error("");
-
-		// Don't fail the install - user can still build from source
-		process.exit(0);
+		fs.rmSync(tempPath, { force: true });
+		printFallback(err.message);
 	}
 }
 
-main();
+if (require.main === module) {
+	main();
+}
+
+module.exports = { downloadFile, getAssetName, getExpectedChecksum, sha256File };

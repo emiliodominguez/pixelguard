@@ -25,6 +25,7 @@
 	},
 	"files": [
 		"scripts/",
+		"checksums.json",
 		"README.md"
 	],
 	"scripts": {
