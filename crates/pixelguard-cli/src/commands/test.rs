@@ -3,40 +3,39 @@
 //! This command captures screenshots of all configured shots,
 //! compares them against the baseline, and generates an HTML report.
 //! Supports plugins for capture, diff, report, and notification.
+//!
+//! The run only trusts what it captured itself: stale files on disk are never
+//! compared, and a shot that fails to capture fails the run.
 
-use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::{get, post},
-    Json, Router,
-};
 use clap::Args;
 use pixelguard_core::{
-    capture::{capture_screenshots_in_dir, update_baseline},
-    config::Shot,
-    diff::{diff_images, has_baseline, DiffResult},
+    capture::{
+        capture_screenshots_in_dir, prepare_current_dir, prune_baseline, update_baseline_exact,
+        CaptureResult, CapturedShot, FailedShot,
+    },
+    config::{screenshot_name, Shot},
+    diff::{diff_captured, has_baseline, parse_shot_name, DiffResult},
     fetch_storybook_stories, generate_report,
     plugins::{
-        self, CaptureInput, CaptureOutput, CaptureShot, CaptureViewport, NotifierInput,
-        PluginCategory, PluginRegistry, ReporterChangedShot, ReporterConfig, ReporterDiffResult,
-        ReporterInput,
+        self, CaptureInput, CaptureNamedViewport, CaptureOutput, CaptureShot, CaptureViewport,
+        NotifierInput, PluginCategory, PluginRegistry, ReporterChangedShot, ReporterConfig,
+        ReporterDiffResult, ReporterInput,
     },
     Config,
 };
-use tower_http::services::ServeDir;
-use tracing::info;
+use regex::Regex;
+use tracing::{info, warn};
 
 /// Arguments for the test command.
 #[derive(Args)]
 pub struct TestArgs {
     /// Path to config file (default: pixelguard.config.json)
-    #[arg(long, short)]
+    #[arg(long, short, env = "PIXELGUARD_CONFIG")]
     config: Option<String>,
 
     /// Update baseline with current screenshots
@@ -47,11 +46,11 @@ pub struct TestArgs {
     #[arg(long, value_delimiter = ',')]
     update_only: Option<Vec<String>>,
 
-    /// CI mode: machine-readable output, exit code 1 on diffs
+    /// CI mode: machine-readable output, exit code 1 on diffs or failures
     #[arg(long)]
     ci: bool,
 
-    /// Only test shots matching this pattern
+    /// Only test shots whose name contains this text
     #[arg(long)]
     filter: Option<String>,
 
@@ -66,6 +65,10 @@ pub struct TestArgs {
     /// Port for the local web server (default: 3333)
     #[arg(long, default_value = "3333")]
     port: u16,
+
+    /// With --serve, do not open the report in a browser
+    #[arg(long)]
+    no_open: bool,
 }
 
 /// Runs the test command.
@@ -81,7 +84,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
         info!("🔌 Loaded {} plugin(s)", plugin_registry.len());
     }
 
-    // Dynamically discover shots if source is storybook and no shots configured
+    // Dynamically discover shots if source is storybook
     if config.source == "storybook" && !config.base_url.is_empty() {
         let discovered = discover_shots(&config).await?;
         if discovered.is_empty() {
@@ -91,7 +94,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
                  • Storybook is not running\n  \
                  • Wrong URL or port in config\n  \
                  • Network/firewall blocking the connection\n  \
-                 • Storybook not properly configured\n\n\
+                 • include/exclude patterns filter out every story\n\n\
                  💡 Solutions:\n  \
                  1️⃣ Start Storybook: npm run storybook\n  \
                  2️⃣ Verify it's accessible at {}\n  \
@@ -103,6 +106,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
         }
         // Merge with any overrides from config
         config.shots = merge_shots(discovered, &config.shots);
+        config.validate()?;
     }
 
     if config.shots.is_empty() {
@@ -116,23 +120,28 @@ pub async fn run(args: TestArgs) -> Result<()> {
                     {{\"name\": \"home\", \"path\": \"/\"}}\n       \
                   ]\n     \
                 }}\n\n  \
-             3️⃣ See examples at: https://github.com/pixelguard/docs"
+             3️⃣ See docs/configuration.md for all options"
         );
     }
+
+    // Every screenshot name the unfiltered config produces; anything else in the
+    // baseline belongs to a shot that no longer exists.
+    let known: HashSet<String> = config.screenshot_names().into_iter().collect();
 
     // Apply filter if specified
     if let Some(pattern) = &args.filter {
         let original_count = config.shots.len();
-        config.shots.retain(|shot| shot.name.contains(pattern));
+        config
+            .shots
+            .retain(|shot| shot.name.contains(pattern.as_str()));
 
         if config.shots.is_empty() {
             anyhow::bail!(
                 "❌ No shots match filter '{}'.\n\
                  📊 {} shots were filtered out.\n\n\
                  💡 Solutions:\n  \
-                 • Check the filter pattern for typos\n  \
-                 • Use 'pixelguard list' to see all available shots\n  \
-                 • Try a broader pattern, e.g., --filter=button*",
+                 • The filter matches any part of a shot name; check it for typos\n  \
+                 • Use 'pixelguard list' to see all available shots",
                 pattern,
                 original_count
             );
@@ -148,16 +157,16 @@ pub async fn run(args: TestArgs) -> Result<()> {
         }
     }
 
-    let shot_count = config.shots.len();
+    let screenshot_count = config.shots.len() * config.effective_viewports().len();
 
     // Early validation: Check Node.js and Playwright before capturing
     // Skip if using a capture plugin (it handles its own dependencies)
     if !plugin_registry.has_override(PluginCategory::Capture) {
-        validate_capture_environment()?;
+        validate_capture_environment(&working_dir)?;
     }
 
     if !args.ci {
-        println!("📸 Capturing {} screenshots...", shot_count);
+        println!("📸 Capturing {} screenshots...", screenshot_count);
     }
 
     // Capture screenshots (using plugin if available)
@@ -165,7 +174,7 @@ pub async fn run(args: TestArgs) -> Result<()> {
 
     if !capture_result.failed.is_empty() {
         eprintln!(
-            "\n⚠️  Warning: {} shot(s) failed to capture:",
+            "\n⚠️  {} screenshot(s) failed to capture:",
             capture_result.failed.len()
         );
         for failed in &capture_result.failed {
@@ -176,39 +185,37 @@ pub async fn run(args: TestArgs) -> Result<()> {
     }
 
     // Handle --update or --update-only flag
-    let should_update = args.update || args.update_only.is_some();
-
-    if should_update {
-        let filter = args.update_only.as_deref();
-        let updated_count = update_baseline(&config, &working_dir, Some(&plugin_registry), filter)?;
-
-        if args.ci {
-            println!("{{\"status\":\"updated\",\"count\":{}}}", updated_count);
-        } else if let Some(names) = &args.update_only {
-            println!(
-                "\n✅ Updated {} baseline(s): {}",
-                updated_count,
-                names.join(", ")
-            );
-            println!("💡 Tip: Commit these changes to your version control system.");
-        } else {
-            println!("\n✅ Updated baseline with {} screenshot(s)", updated_count);
-            println!("💡 Tip: Commit .pixelguard/baseline/ to your version control.");
-        }
-
-        return Ok(());
+    if args.update || args.update_only.is_some() {
+        return run_update(
+            &args,
+            &config,
+            &working_dir,
+            &plugin_registry,
+            &capture_result,
+            &known,
+        );
     }
 
     // Check if baseline exists
     if !has_baseline(&config, &working_dir) {
         if args.ci {
             println!(
-                "{{\"status\":\"no_baseline\",\"captured\":{}}}",
-                capture_result.captured.len()
+                "{}",
+                serde_json::json!({
+                    "status": "no_baseline",
+                    "captured": capture_result.captured.len(),
+                    "failed": capture_result.failed.len(),
+                })
             );
-            // In CI mode, no baseline means first run - exit successfully
-            // User should run with --update to create baseline
-            return Ok(());
+            eprintln!(
+                "❌ No baseline found in '{}'. Create it locally with 'pixelguard test --update' \
+                 and commit it; CI cannot pass without something to compare against.",
+                working_dir
+                    .join(&config.output_dir)
+                    .join("baseline")
+                    .display()
+            );
+            std::process::exit(1);
         }
 
         println!(
@@ -228,60 +235,52 @@ pub async fn run(args: TestArgs) -> Result<()> {
         println!("🔍 Comparing against baseline...");
     }
 
-    let diff_result = diff_images(&config, &working_dir, Some(&plugin_registry))?;
+    let filter = args.filter.clone();
+    let diff_result = diff_captured(
+        &config,
+        &working_dir,
+        Some(&plugin_registry),
+        &capture_result,
+        &known,
+        |name| {
+            filter
+                .as_deref()
+                .is_none_or(|pattern| parse_shot_name(name).0.contains(pattern))
+        },
+    )?;
 
     // Generate built-in report
     let report_path = generate_report(&config, &diff_result, &working_dir)?;
 
-    // Run additional reporter plugins
-    run_reporter_plugins(&config, &diff_result, &working_dir, &plugin_registry)?;
+    // Plugins run before any exit so CI failures still produce reports and notifications.
+    let mut plugin_errors = Vec::new();
+    if let Err(error) = run_reporter_plugins(&config, &diff_result, &working_dir, &plugin_registry)
+    {
+        plugin_errors.push(error);
+    }
+    if let Err(error) = run_notifier_plugins(
+        &diff_result,
+        Some(&report_path),
+        args.ci,
+        &working_dir,
+        &plugin_registry,
+    ) {
+        plugin_errors.push(error);
+    }
 
-    // Output results
     if args.ci {
         let result = serde_json::json!({
-            "status": if diff_result.has_changes() { "fail" } else { "pass" },
+            "status": if diff_result.passed() { "pass" } else { "fail" },
             "unchanged": diff_result.unchanged.len(),
             "changed": diff_result.changed.len(),
             "added": diff_result.added.len(),
             "removed": diff_result.removed.len(),
+            "failed": diff_result.failed.len(),
             "report": report_path.to_string_lossy(),
         });
         println!("{}", serde_json::to_string(&result)?);
-
-        // Exit with code 1 if there are diffs
-        if diff_result.has_changes() {
-            std::process::exit(1);
-        }
     } else {
-        println!();
-
-        if !diff_result.unchanged.is_empty() {
-            println!("✅ {} unchanged", diff_result.unchanged.len());
-        }
-
-        if !diff_result.changed.is_empty() {
-            println!("❌ {} changed", diff_result.changed.len());
-            for shot in &diff_result.changed {
-                println!(
-                    "   └─ {} ({:.2}% different)",
-                    shot.name, shot.diff_percentage
-                );
-            }
-        }
-
-        if !diff_result.added.is_empty() {
-            println!("➕ {} added", diff_result.added.len());
-            for name in &diff_result.added {
-                println!("   └─ {}", name);
-            }
-        }
-
-        if !diff_result.removed.is_empty() {
-            println!("➖ {} removed", diff_result.removed.len());
-            for name in &diff_result.removed {
-                println!("   └─ {}", name);
-            }
-        }
+        print_summary(&diff_result);
 
         if args.serve {
             println!("\n🚀 Starting server...");
@@ -294,22 +293,148 @@ pub async fn run(args: TestArgs) -> Result<()> {
         }
     }
 
-    // Run notifier plugins
-    run_notifier_plugins(
-        &diff_result,
-        Some(&report_path),
-        args.ci,
-        &working_dir,
-        &plugin_registry,
-    )?;
+    for error in &plugin_errors {
+        eprintln!("⚠️  {:#}", error);
+    }
+
+    if args.ci && (!diff_result.passed() || !plugin_errors.is_empty()) {
+        std::process::exit(1);
+    }
 
     // Serve the report if requested
     if args.serve && !args.ci {
         let output_dir = working_dir.join(&config.output_dir);
-        serve_report(&output_dir, args.port).await?;
+        super::server::serve_report(&output_dir, args.port, !args.no_open).await?;
+    }
+
+    if let Some(error) = plugin_errors.into_iter().next() {
+        return Err(error);
     }
 
     Ok(())
+}
+
+/// Promotes captured screenshots to the baseline for `--update` / `--update-only`.
+///
+/// Only screenshots captured in this run are copied. Baselines for shots that
+/// no longer exist are pruned, but only after a complete, unfiltered,
+/// failure-free run, so a flaky capture can never delete a baseline.
+fn run_update(
+    args: &TestArgs,
+    config: &Config,
+    working_dir: &Path,
+    plugin_registry: &PluginRegistry,
+    capture_result: &CaptureResult,
+    known: &HashSet<String>,
+) -> Result<()> {
+    let targets: Vec<String> = capture_result
+        .captured
+        .iter()
+        .map(|shot| shot.name.clone())
+        .filter(|name| match &args.update_only {
+            None => true,
+            Some(selected) => selected
+                .iter()
+                .any(|s| name == s || parse_shot_name(name).0 == s.as_str()),
+        })
+        .collect();
+
+    let updated = update_baseline_exact(config, working_dir, Some(plugin_registry), &targets)?;
+
+    let complete_run =
+        args.filter.is_none() && args.update_only.is_none() && capture_result.failed.is_empty();
+    let pruned = if complete_run {
+        prune_baseline(config, working_dir, Some(plugin_registry), known).unwrap_or_else(|error| {
+            warn!("⚠️  Could not prune stale baselines: {:#}", error);
+            Vec::new()
+        })
+    } else {
+        Vec::new()
+    };
+
+    if args.ci {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": if capture_result.failed.is_empty() { "updated" } else { "partial" },
+                "count": updated.len(),
+                "pruned": pruned.len(),
+                "failed": capture_result.failed.len(),
+            })
+        );
+    } else {
+        match &args.update_only {
+            Some(names) => {
+                println!(
+                    "\n✅ Updated {} baseline(s) for: {}",
+                    updated.len(),
+                    names.join(", ")
+                );
+                if updated.is_empty() {
+                    println!("   ℹ️  No captured screenshot matched those names.");
+                }
+            }
+            None => println!("\n✅ Updated baseline with {} screenshot(s)", updated.len()),
+        }
+        if !pruned.is_empty() {
+            println!(
+                "🧹 Removed {} baseline(s) for shots that no longer exist:",
+                pruned.len()
+            );
+            for name in &pruned {
+                println!("   └─ {}", name);
+            }
+        }
+        println!("💡 Tip: Commit .pixelguard/baseline/ to your version control.");
+    }
+
+    if !capture_result.failed.is_empty() {
+        anyhow::bail!(
+            "❌ {} screenshot(s) failed to capture, so their baselines were not updated.",
+            capture_result.failed.len()
+        );
+    }
+
+    Ok(())
+}
+
+fn print_summary(diff_result: &DiffResult) {
+    println!();
+
+    if !diff_result.unchanged.is_empty() {
+        println!("✅ {} unchanged", diff_result.unchanged.len());
+    }
+
+    if !diff_result.changed.is_empty() {
+        println!("❌ {} changed", diff_result.changed.len());
+        for shot in &diff_result.changed {
+            println!(
+                "   └─ {} ({:.2}% different)",
+                shot.name, shot.diff_percentage
+            );
+        }
+    }
+
+    if !diff_result.added.is_empty() {
+        println!("➕ {} added", diff_result.added.len());
+        for name in &diff_result.added {
+            println!("   └─ {}", name);
+        }
+    }
+
+    if !diff_result.removed.is_empty() {
+        println!("➖ {} removed", diff_result.removed.len());
+        for name in &diff_result.removed {
+            println!("   └─ {}", name);
+        }
+    }
+
+    if !diff_result.failed.is_empty() {
+        println!("💥 {} failed", diff_result.failed.len());
+        for failure in &diff_result.failed {
+            println!("   └─ {}: {}", failure.name, failure.error);
+        }
+    }
 }
 
 /// Captures screenshots using a plugin if available, otherwise uses built-in capture.
@@ -317,64 +442,83 @@ async fn capture_with_plugin(
     config: &Config,
     working_dir: &Path,
     registry: &PluginRegistry,
-) -> Result<pixelguard_core::capture::CaptureResult> {
-    if let Some(plugin) = registry.get(PluginCategory::Capture) {
-        info!("🔌 Using capture plugin: {}", plugin.name());
+) -> Result<CaptureResult> {
+    let Some(plugin) = registry.get(PluginCategory::Capture) else {
+        return capture_screenshots_in_dir(config, working_dir).await;
+    };
 
-        let output_dir = working_dir
-            .join(&config.output_dir)
-            .join("current")
-            .to_string_lossy()
-            .to_string();
+    info!("🔌 Using capture plugin: {}", plugin.name());
 
-        // Create output directory
-        std::fs::create_dir_all(working_dir.join(&config.output_dir).join("current"))?;
+    let current_dir = prepare_current_dir(config, working_dir)?;
+    let viewports = config.effective_viewports();
 
-        let input = CaptureInput {
-            shots: config
-                .shots
-                .iter()
-                .map(|s| CaptureShot {
-                    name: s.name.clone(),
-                    path: s.path.clone(),
-                    wait_for: s.wait_for.clone(),
-                    delay: s.delay,
-                })
-                .collect(),
-            base_url: config.base_url.clone(),
-            viewport: CaptureViewport {
-                width: config.viewport.width,
-                height: config.viewport.height,
-            },
-            output_dir,
-            options: serde_json::json!({}),
-        };
+    let input = CaptureInput {
+        shots: config
+            .shots
+            .iter()
+            .map(|s| CaptureShot {
+                name: s.name.clone(),
+                path: s.path.clone(),
+                wait_for: s.wait_for.clone(),
+                delay: s.delay,
+            })
+            .collect(),
+        base_url: config.base_url.trim_end_matches('/').to_string(),
+        viewport: CaptureViewport {
+            width: config.viewport.width,
+            height: config.viewport.height,
+        },
+        viewports: viewports
+            .iter()
+            .map(|v| CaptureNamedViewport {
+                name: v.name.clone(),
+                width: v.width,
+                height: v.height,
+            })
+            .collect(),
+        output_dir: current_dir.to_string_lossy().to_string(),
+        options: serde_json::json!({}),
+    };
 
-        let output: CaptureOutput =
-            plugins::executor::execute_hook(plugin, "capture", &input, working_dir)?;
+    let output: CaptureOutput =
+        plugins::executor::execute_hook(plugin, "capture", &input, working_dir)?;
 
-        Ok(pixelguard_core::capture::CaptureResult {
-            captured: output
-                .captured
-                .into_iter()
-                .map(|s| pixelguard_core::capture::CapturedShot {
-                    name: s.name,
-                    path: std::path::PathBuf::from(s.path),
-                })
-                .collect(),
-            failed: output
-                .failed
-                .into_iter()
-                .map(|s| pixelguard_core::capture::FailedShot {
-                    name: s.name,
-                    error: s.error,
-                })
-                .collect(),
-        })
-    } else {
-        // Use built-in capture
-        capture_screenshots_in_dir(config, working_dir).await
+    Ok(reconcile_plugin_capture(config, &current_dir, output))
+}
+
+/// Checks a capture plugin's report against what was asked for.
+///
+/// Only expected names whose file actually exists in `current_dir` count as
+/// captured; everything else expected is a failure. Unexpected names are ignored.
+fn reconcile_plugin_capture(
+    config: &Config,
+    current_dir: &Path,
+    output: CaptureOutput,
+) -> CaptureResult {
+    let mut captured = Vec::new();
+    let mut failed = Vec::new();
+
+    for shot in &config.shots {
+        for viewport in config.effective_viewports() {
+            let name = screenshot_name(&shot.name, &viewport.name);
+            let path = current_dir.join(format!("{}.png", name));
+            if let Some(failure) = output.failed.iter().find(|f| f.name == name) {
+                failed.push(FailedShot {
+                    name,
+                    error: failure.error.clone(),
+                });
+            } else if path.is_file() {
+                captured.push(CapturedShot { name, path });
+            } else {
+                failed.push(FailedShot {
+                    name,
+                    error: "Capture plugin did not produce this screenshot".to_string(),
+                });
+            }
+        }
     }
+
+    CaptureResult { captured, failed }
 }
 
 /// Runs all registered reporter plugins.
@@ -460,86 +604,12 @@ fn convert_diff_result(diff_result: &DiffResult) -> ReporterDiffResult {
             .collect(),
         added: diff_result.added.clone(),
         removed: diff_result.removed.clone(),
+        failed: diff_result.failed.iter().map(|f| f.name.clone()).collect(),
     }
-}
-
-/// State for the serve endpoints.
-#[derive(Clone)]
-struct ServeState {
-    output_dir: PathBuf,
-}
-
-/// Serves the report directory on a local HTTP server with save endpoint.
-async fn serve_report(output_dir: &Path, port: u16) -> Result<()> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let url = format!("http://localhost:{}/report.html", port);
-
-    let state = Arc::new(ServeState {
-        output_dir: output_dir.to_path_buf(),
-    });
-
-    let app = Router::new()
-        .route("/api/decisions", post(save_decisions))
-        .route("/api/decisions", get(load_decisions))
-        .with_state(state)
-        .fallback_service(ServeDir::new(output_dir));
-
-    println!("🌐 Serving report at: {}", url);
-    println!("   Press Ctrl+C to stop the server\n");
-
-    // Open browser
-    if let Err(e) = open::that(&url) {
-        eprintln!(
-            "⚠️  Could not open browser automatically: {}\n   \
-             Open this URL manually: {}",
-            e, url
-        );
-    }
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
-}
-
-/// Handler to save decisions to the output directory.
-async fn save_decisions(
-    State(state): State<Arc<ServeState>>,
-    Json(body): Json<serde_json::Value>,
-) -> Result<StatusCode, StatusCode> {
-    let decisions_path = state.output_dir.join("decisions.json");
-
-    let content = serde_json::to_string_pretty(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
-
-    std::fs::write(&decisions_path, content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(StatusCode::OK)
-}
-
-/// Handler to load decisions from the output directory.
-async fn load_decisions(
-    State(state): State<Arc<ServeState>>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    let decisions_path = state.output_dir.join("decisions.json");
-
-    if !decisions_path.exists() {
-        return Ok(Json(serde_json::json!({
-            "version": "1.0",
-            "exportedAt": "",
-            "decisions": {}
-        })));
-    }
-
-    let content = std::fs::read_to_string(&decisions_path).map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let data: serde_json::Value =
-        serde_json::from_str(&content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(Json(data))
 }
 
 /// Discovers shots dynamically from the source (e.g., Storybook).
-async fn discover_shots(config: &Config) -> Result<Vec<Shot>> {
+pub async fn discover_shots(config: &Config) -> Result<Vec<Shot>> {
     match config.source.as_str() {
         "storybook" => {
             let stories = fetch_storybook_stories(&config.base_url)
@@ -551,61 +621,76 @@ async fn discover_shots(config: &Config) -> Result<Vec<Shot>> {
                     )
                 })?;
 
-            // Apply include/exclude filters
-            let filtered: Vec<Shot> = stories
-                .into_iter()
-                .filter(|shot| matches_patterns(&shot.name, &config.include, &config.exclude))
-                .collect();
+            let include = compile_patterns(&config.include)?;
+            let exclude = compile_patterns(&config.exclude)?;
 
-            Ok(filtered)
+            Ok(stories
+                .into_iter()
+                .filter(|shot| matches_patterns(&shot.name, &include, &exclude))
+                .collect())
         }
         _ => Ok(Vec::new()),
     }
 }
 
 /// Checks if a name matches include patterns and doesn't match exclude patterns.
-fn matches_patterns(name: &str, include: &[String], exclude: &[String]) -> bool {
-    // Check exclude first
-    for pattern in exclude {
-        if glob_match(pattern, name) {
-            return false;
-        }
+fn matches_patterns(name: &str, include: &[Regex], exclude: &[Regex]) -> bool {
+    if exclude.iter().any(|re| re.is_match(name)) {
+        return false;
     }
-
-    // Then check include
-    for pattern in include {
-        if glob_match(pattern, name) {
-            return true;
-        }
-    }
-
-    // If no include patterns, include everything
-    include.is_empty()
+    include.is_empty() || include.iter().any(|re| re.is_match(name))
 }
 
-/// Simple glob matching (supports * and **).
-fn glob_match(pattern: &str, name: &str) -> bool {
-    if pattern == "**/*" || pattern == "*" {
-        return true;
+/// Compiles glob patterns, reporting the first invalid one.
+fn compile_patterns(patterns: &[String]) -> Result<Vec<Regex>> {
+    patterns
+        .iter()
+        .map(|pattern| {
+            glob_to_regex(pattern)
+                .with_context(|| format!("Invalid include/exclude pattern '{}'", pattern))
+        })
+        .collect()
+}
+
+/// Converts a glob into a case-insensitive, anchored regex over story ids.
+///
+/// `*` and `**` match any run of characters, `?` matches one character and a
+/// leading `**/` is optional, so `**/*deprecated*` matches the story id
+/// `components-button--deprecated`. Every other character is literal.
+fn glob_to_regex(pattern: &str) -> Result<Regex> {
+    let mut body = pattern;
+    let mut regex = String::from("(?i)^");
+    while let Some(rest) = body.strip_prefix("**/") {
+        body = rest;
+        regex.push_str("(?:.*/)?");
     }
 
-    // Convert glob to regex-like matching
-    let pattern = pattern.replace("**", ".*").replace('*', "[^/]*");
-    regex::Regex::new(&format!("^{}$", pattern))
-        .map(|re| re.is_match(name))
-        .unwrap_or(false)
+    let mut chars = body.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' => {
+                while chars.peek() == Some(&'*') {
+                    chars.next();
+                }
+                regex.push_str(".*");
+            }
+            '?' => regex.push('.'),
+            other => regex.push_str(&regex::escape(&other.to_string())),
+        }
+    }
+    regex.push('$');
+
+    Ok(Regex::new(&regex)?)
 }
 
 /// Merges discovered shots with config overrides.
 ///
-/// Config shots can provide custom waitFor, delay, or completely override a shot.
-fn merge_shots(discovered: Vec<Shot>, overrides: &[Shot]) -> Vec<Shot> {
+/// Config shots can provide custom waitFor or delay for a discovered story.
+pub fn merge_shots(discovered: Vec<Shot>, overrides: &[Shot]) -> Vec<Shot> {
     discovered
         .into_iter()
         .map(|mut shot| {
-            // Check if there's an override for this shot
             if let Some(override_shot) = overrides.iter().find(|o| o.name == shot.name) {
-                // Apply overrides
                 if override_shot.wait_for.is_some() {
                     shot.wait_for = override_shot.wait_for.clone();
                 }
@@ -621,32 +706,27 @@ fn merge_shots(discovered: Vec<Shot>, overrides: &[Shot]) -> Vec<Shot> {
 
 /// Validates that Node.js and Playwright are available before attempting capture.
 ///
-/// This provides a clear error message upfront rather than failing mid-capture
-/// with a confusing "command not found" error.
-fn validate_capture_environment() -> Result<()> {
-    // Check Node.js
-    Command::new("node").arg("--version").output().context(
-        "❌ Node.js is required for screenshot capture but was not found.\n\n\
-         💡 Installation:\n  \
-         • Download from https://nodejs.org (LTS version recommended)\n  \
-         • Or use a version manager like nvm or fnm\n\n  \
-         🔍 After installation, restart your terminal and try again.",
-    )?;
+/// Resolution mirrors the capture driver (`require.resolve` from the project),
+/// so this never triggers an `npx` download and never disagrees with capture.
+fn validate_capture_environment(working_dir: &Path) -> Result<()> {
+    let output = Command::new("node")
+        .arg("-e")
+        .arg(PLAYWRIGHT_PROBE)
+        .arg(working_dir)
+        .output()
+        .context(
+            "❌ Node.js is required for screenshot capture but was not found.\n\n\
+             💡 Installation:\n  \
+             • Download from https://nodejs.org (LTS version recommended)\n  \
+             • Or use a version manager like nvm or fnm\n\n  \
+             🔍 After installation, restart your terminal and try again.",
+        )?;
 
-    // Check Playwright (via npx or node_modules)
-    let npx_check = Command::new("npx")
-        .args(["playwright", "--version"])
-        .output();
-
-    let has_playwright = npx_check.map(|o| o.status.success()).unwrap_or(false)
-        || Path::new("node_modules/@playwright/test").exists()
-        || Path::new("node_modules/playwright").exists();
-
-    if !has_playwright {
+    if !output.status.success() {
         anyhow::bail!(
             "❌ Playwright is required for screenshot capture but was not found.\n\n\
              💡 Installation steps:\n  \
-             1️⃣ Install Playwright: npm install -D @playwright/test\n  \
+             1️⃣ Install Playwright: npm install -D playwright\n  \
              2️⃣ Install browsers: npx playwright install chromium\n\n  \
              📝 Note: Chromium is the only browser required for screenshots.\n  \
              🔗 Docs: https://playwright.dev/docs/intro"
@@ -654,4 +734,97 @@ fn validate_capture_environment() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Node snippet that exits 0 when a Playwright package resolves from argv[1].
+pub const PLAYWRIGHT_PROBE: &str = "const d=process.argv[1];\
+for(const n of ['playwright','@playwright/test','playwright-core']){\
+try{console.log(require(require.resolve(n+'/package.json',{paths:[d]})).version);process.exit(0)}catch(e){}}\
+process.exit(1)";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn patterns(globs: &[&str]) -> Vec<Regex> {
+        compile_patterns(&globs.iter().map(|g| g.to_string()).collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn documented_exclude_pattern_matches_story_ids() {
+        let exclude = patterns(&["**/*Deprecated*"]);
+        let include = patterns(&["**/*"]);
+
+        assert!(!matches_patterns(
+            "components-button--deprecated",
+            &include,
+            &exclude
+        ));
+        assert!(matches_patterns(
+            "components-button--primary",
+            &include,
+            &exclude
+        ));
+    }
+
+    #[test]
+    fn glob_treats_regex_metacharacters_literally() {
+        let include = patterns(&["button.primary", "card(1)*"]);
+
+        assert!(matches_patterns("button.primary", &include, &[]));
+        assert!(!matches_patterns("buttonXprimary", &include, &[]));
+        assert!(matches_patterns("card(1)--large", &include, &[]));
+    }
+
+    #[test]
+    fn empty_include_list_includes_everything() {
+        assert!(matches_patterns("anything", &[], &[]));
+    }
+
+    #[test]
+    fn plugin_capture_must_produce_every_expected_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.png"), b"png").unwrap();
+        let config = Config {
+            shots: vec![
+                Shot {
+                    name: "a".to_string(),
+                    path: "/a".to_string(),
+                    wait_for: None,
+                    delay: None,
+                },
+                Shot {
+                    name: "b".to_string(),
+                    path: "/b".to_string(),
+                    wait_for: None,
+                    delay: None,
+                },
+            ],
+            ..Default::default()
+        };
+        let output = CaptureOutput {
+            captured: vec![
+                plugins::CapturedShot {
+                    name: "a".to_string(),
+                    path: "a.png".to_string(),
+                },
+                plugins::CapturedShot {
+                    name: "b".to_string(),
+                    path: "b.png".to_string(),
+                },
+                plugins::CapturedShot {
+                    name: "../../evil".to_string(),
+                    path: "/etc/passwd".to_string(),
+                },
+            ],
+            failed: vec![],
+        };
+
+        let result = reconcile_plugin_capture(&config, dir.path(), output);
+
+        assert_eq!(result.captured.len(), 1);
+        assert_eq!(result.captured[0].name, "a");
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0].name, "b");
+    }
 }

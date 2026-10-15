@@ -142,7 +142,10 @@ pub struct Shot {
     /// Unique name for this shot
     pub name: String,
 
-    /// URL path to navigate to
+    /// URL path to navigate to, appended to `baseUrl`.
+    ///
+    /// Optional so Storybook overrides can list only `name` plus `delay`/`waitFor`.
+    #[serde(default)]
     pub path: String,
 
     /// Optional CSS selector to wait for before capturing
@@ -248,6 +251,14 @@ impl Config {
             )
         })?;
 
+        config.validate().map_err(|e| {
+            anyhow::anyhow!(
+                "❌ Invalid configuration in '{}'.\n\n🔍 {}",
+                path.display(),
+                e
+            )
+        })?;
+
         Ok(config)
     }
 
@@ -317,6 +328,228 @@ impl Config {
             }]
         }
     }
+
+    /// Returns the screenshot names this config produces, one per shot and viewport.
+    ///
+    /// Names follow the on-disk convention: `{shot}` for the default viewport and
+    /// `{shot}@{viewport}` for named viewports. Use this to know exactly which
+    /// screenshots a run is expected to produce, instead of trusting whatever
+    /// happens to be on disk.
+    pub fn screenshot_names(&self) -> Vec<String> {
+        let viewports = self.effective_viewports();
+        let mut names = Vec::with_capacity(self.shots.len() * viewports.len());
+        for shot in &self.shots {
+            for viewport in &viewports {
+                names.push(screenshot_name(&shot.name, &viewport.name));
+            }
+        }
+        names
+    }
+
+    /// Validates every value that later ends up in file paths, URLs, generated
+    /// scripts or loop bounds.
+    ///
+    /// Called by [`Config::load`]. Call it again after mutating `shots` (for
+    /// example after Storybook discovery) so remotely discovered names get the
+    /// same checks as hand-written ones.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error describing the first invalid value found.
+    pub fn validate(&self) -> Result<()> {
+        if !self.threshold.is_finite() || !(0.0..=100.0).contains(&self.threshold) {
+            anyhow::bail!(
+                "'threshold' must be a percentage between 0 and 100, got {}.",
+                self.threshold
+            );
+        }
+
+        if self.concurrency == 0 || self.concurrency > MAX_CONCURRENCY {
+            anyhow::bail!(
+                "'concurrency' must be between 1 and {}, got {}.",
+                MAX_CONCURRENCY,
+                self.concurrency
+            );
+        }
+
+        if self.output_dir.trim().is_empty() {
+            anyhow::bail!("'outputDir' must not be empty. The default is '.pixelguard'.");
+        }
+
+        if !self.base_url.is_empty() {
+            validate_base_url(&self.base_url)?;
+        }
+
+        validate_dimensions("viewport", self.viewport.width, self.viewport.height)?;
+
+        let mut viewport_names = std::collections::HashSet::new();
+        for viewport in &self.viewports {
+            validate_name("viewport", &viewport.name)?;
+            validate_dimensions(&viewport.name, viewport.width, viewport.height)?;
+            if !viewport_names.insert(viewport.name.as_str()) {
+                anyhow::bail!("Duplicate viewport name '{}'.", viewport.name);
+            }
+        }
+
+        let mut shot_names = std::collections::HashSet::new();
+        for shot in &self.shots {
+            validate_shot(shot)?;
+            if !shot_names.insert(shot.name.as_str()) {
+                anyhow::bail!(
+                    "Duplicate shot name '{}'. Each shot needs a unique name because it \
+                     becomes the screenshot file name.",
+                    shot.name
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Upper bound for `concurrency`; each unit is a live browser context.
+pub const MAX_CONCURRENCY: usize = 64;
+
+/// Upper bound for viewport width and height in pixels.
+pub const MAX_VIEWPORT_DIMENSION: u32 = 16_384;
+
+/// Upper bound for a shot's `delay` (5 minutes).
+pub const MAX_DELAY_MS: u64 = 300_000;
+
+/// Upper bound for shot and viewport name length.
+const MAX_NAME_LENGTH: usize = 200;
+
+/// Builds the screenshot name for a shot at a viewport.
+///
+/// The `default` viewport keeps the bare shot name for backward compatibility.
+pub fn screenshot_name(shot_name: &str, viewport_name: &str) -> String {
+    if viewport_name == "default" {
+        shot_name.to_string()
+    } else {
+        format!("{}@{}", shot_name, viewport_name)
+    }
+}
+
+/// Validates a single shot definition.
+///
+/// # Errors
+///
+/// Returns an error if the name is not filesystem-safe, the path cannot be
+/// appended to the base URL, or the delay is out of range.
+pub fn validate_shot(shot: &Shot) -> Result<()> {
+    validate_name("shot", &shot.name)?;
+
+    if !shot.path.is_empty() && !shot.path.starts_with('/') {
+        anyhow::bail!(
+            "Shot '{}' has path '{}'. Paths must start with '/' because they are \
+             appended to 'baseUrl'.",
+            shot.name,
+            shot.path
+        );
+    }
+    if shot.path.starts_with("//") {
+        anyhow::bail!(
+            "Shot '{}' has path '{}'. A path starting with '//' would navigate away \
+             from 'baseUrl'.",
+            shot.name,
+            shot.path
+        );
+    }
+    if shot.path.chars().any(char::is_control) {
+        anyhow::bail!("Shot '{}' has control characters in its path.", shot.name);
+    }
+
+    if let Some(delay) = shot.delay {
+        if delay > MAX_DELAY_MS {
+            anyhow::bail!(
+                "Shot '{}' has delay {}ms; the maximum is {}ms.",
+                shot.name,
+                delay,
+                MAX_DELAY_MS
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates a shot or viewport name that becomes part of a file name.
+///
+/// Rejects anything that could escape the screenshot directory, collide with
+/// the `shot@viewport` naming scheme, break report URLs, or is not portable
+/// across filesystems.
+///
+/// # Errors
+///
+/// Returns an error naming the offending value and the rule it broke.
+pub fn validate_name(kind: &str, name: &str) -> Result<()> {
+    const FORBIDDEN: &[char] = &['/', '\\', '@', '<', '>', ':', '"', '|', '?', '*', '#', '%'];
+
+    if name.is_empty() {
+        anyhow::bail!("A {} name must not be empty.", kind);
+    }
+    if name.len() > MAX_NAME_LENGTH {
+        anyhow::bail!(
+            "The {} name '{}…' is longer than {} bytes.",
+            kind,
+            name.chars().take(40).collect::<String>(),
+            MAX_NAME_LENGTH
+        );
+    }
+    if name.starts_with('.') || name.ends_with('.') || name.trim() != name {
+        anyhow::bail!(
+            "The {} name '{}' must not start or end with '.' or whitespace.",
+            kind,
+            name
+        );
+    }
+    if let Some(bad) = name
+        .chars()
+        .find(|c| FORBIDDEN.contains(c) || c.is_control())
+    {
+        anyhow::bail!(
+            "The {} name '{}' contains '{}'. Names become file names, so these \
+             characters are not allowed: / \\ @ < > : \" | ? * # % and control characters.",
+            kind,
+            name,
+            bad.escape_default()
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_dimensions(label: &str, width: u32, height: u32) -> Result<()> {
+    let valid = 1..=MAX_VIEWPORT_DIMENSION;
+    if !valid.contains(&width) || !valid.contains(&height) {
+        anyhow::bail!(
+            "Viewport '{}' is {}x{}; width and height must be between 1 and {}.",
+            label,
+            width,
+            height,
+            MAX_VIEWPORT_DIMENSION
+        );
+    }
+    Ok(())
+}
+
+fn validate_base_url(base_url: &str) -> Result<()> {
+    let scheme_ok = ["http://", "https://", "file://"]
+        .iter()
+        .any(|scheme| base_url.to_ascii_lowercase().starts_with(scheme));
+    if !scheme_ok {
+        anyhow::bail!(
+            "'baseUrl' must start with http://, https:// or file://, got '{}'.",
+            base_url
+        );
+    }
+    if base_url
+        .chars()
+        .any(|c| c.is_control() || c.is_whitespace())
+    {
+        anyhow::bail!("'baseUrl' must not contain whitespace or control characters.");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

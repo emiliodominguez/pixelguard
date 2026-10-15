@@ -3,20 +3,26 @@
 //! This module provides pixel-by-pixel comparison of images with anti-aliasing
 //! tolerance and generates visual diff images. Supports custom differ plugins
 //! for alternative algorithms like SSIM.
+//!
+//! Comparison is fail-safe: anything that cannot be compared (unreadable
+//! images, a broken differ plugin, a nonsensical percentage) is reported as a
+//! failure instead of silently counting as unchanged.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use image::{ImageBuffer, Rgba, RgbaImage};
 use tracing::{debug, info};
 
+use crate::capture::{CaptureResult, FailedShot};
 use crate::config::Config;
 use crate::plugins::{
     executor, DifferInput, DifferOutput, LoadedPlugin, PluginCategory, PluginRegistry,
 };
 
 /// Result of comparing images.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiffResult {
     /// Shots that are unchanged from baseline
     pub unchanged: Vec<String>,
@@ -26,12 +32,24 @@ pub struct DiffResult {
     pub added: Vec<String>,
     /// Shots that exist in baseline but not in current (removed)
     pub removed: Vec<String>,
+    /// Shots that could not be captured or compared
+    pub failed: Vec<FailedShot>,
 }
 
 impl DiffResult {
     /// Returns true if there are any changes (changed, added, or removed).
     pub fn has_changes(&self) -> bool {
         !self.changed.is_empty() || !self.added.is_empty() || !self.removed.is_empty()
+    }
+
+    /// Returns true if any shot could not be captured or compared.
+    pub fn has_failures(&self) -> bool {
+        !self.failed.is_empty()
+    }
+
+    /// Returns true only when every expected shot was captured, compared and unchanged.
+    pub fn passed(&self) -> bool {
+        !self.has_changes() && !self.has_failures()
     }
 }
 
@@ -56,7 +74,7 @@ pub struct ChangedShot {
 ///
 /// For multi-viewport shots named `shot@viewport`, returns `(shot, Some(viewport))`.
 /// For single-viewport shots named `shot`, returns `(shot, None)`.
-fn parse_shot_name(name: &str) -> (&str, Option<&str>) {
+pub fn parse_shot_name(name: &str) -> (&str, Option<&str>) {
     if let Some(at_pos) = name.rfind('@') {
         let base = &name[..at_pos];
         let viewport = &name[at_pos + 1..];
@@ -66,13 +84,10 @@ fn parse_shot_name(name: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// Compares current screenshots against baseline.
+/// Compares every screenshot in `current/` against the baseline.
 ///
-/// This function:
-/// 1. Loads baseline and current images
-/// 2. Compares them pixel-by-pixel
-/// 3. Generates diff images for changed shots
-/// 4. Returns categorized results
+/// This scans the directories, so whatever is on disk is compared. Prefer
+/// [`diff_captured`] after a capture run: it only trusts what that run produced.
 ///
 /// # Example
 ///
@@ -94,82 +109,106 @@ pub fn diff_images<P: AsRef<Path>>(
     plugin_registry: Option<&PluginRegistry>,
 ) -> Result<DiffResult> {
     let working_dir = working_dir.as_ref();
+    let current_dir = working_dir.join(&config.output_dir).join("current");
+    let current = list_png_stems(&current_dir)?;
+
+    let capture = CaptureResult {
+        captured: current
+            .iter()
+            .map(|name| crate::capture::CapturedShot {
+                name: name.clone(),
+                path: current_dir.join(format!("{}.png", name)),
+            })
+            .collect(),
+        failed: Vec::new(),
+    };
+    let known: HashSet<String> = current.into_iter().collect();
+
+    diff_captured(
+        config,
+        working_dir,
+        plugin_registry,
+        &capture,
+        &known,
+        |_| true,
+    )
+}
+
+/// Compares the screenshots produced by one capture run against the baseline.
+///
+/// * Captured shots with a baseline are compared; without one they are `added`.
+/// * Failed captures are carried into `failed`.
+/// * A baseline is `removed` when `in_scope` accepts its name and `known` (every
+///   screenshot name the unfiltered config produces) does not contain it.
+///
+/// # Errors
+///
+/// Returns an error only for I/O problems with the output directories;
+/// per-shot problems are reported in [`DiffResult::failed`].
+pub fn diff_captured<P, F>(
+    config: &Config,
+    working_dir: P,
+    plugin_registry: Option<&PluginRegistry>,
+    capture: &CaptureResult,
+    known: &HashSet<String>,
+    in_scope: F,
+) -> Result<DiffResult>
+where
+    P: AsRef<Path>,
+    F: Fn(&str) -> bool,
+{
+    let working_dir = working_dir.as_ref();
     let baseline_dir = working_dir.join(&config.output_dir).join("baseline");
     let current_dir = working_dir.join(&config.output_dir).join("current");
     let diff_dir = working_dir.join(&config.output_dir).join("diff");
 
-    // Create diff directory
+    crate::capture::ensure_not_symlink(&diff_dir)?;
+    crate::capture::ensure_not_symlink(&baseline_dir)?;
     std::fs::create_dir_all(&diff_dir)?;
+    clear_png_files(&diff_dir)?;
 
-    let mut result = DiffResult {
-        unchanged: Vec::new(),
-        changed: Vec::new(),
-        added: Vec::new(),
-        removed: Vec::new(),
-    };
-
-    // Get all current screenshots
-    let mut current_shots: std::collections::HashSet<String> = std::collections::HashSet::new();
-    if current_dir.exists() {
-        for entry in std::fs::read_dir(&current_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "png") {
-                if let Some(stem) = path.file_stem() {
-                    current_shots.insert(stem.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-
-    // Get all baseline screenshots
-    let mut baseline_shots: std::collections::HashSet<String> = std::collections::HashSet::new();
-    if baseline_dir.exists() {
-        for entry in std::fs::read_dir(&baseline_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "png") {
-                if let Some(stem) = path.file_stem() {
-                    baseline_shots.insert(stem.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-
-    // Find added shots (in current but not baseline)
-    result
-        .added
-        .extend(current_shots.difference(&baseline_shots).cloned());
-
-    // Find removed shots (in baseline but not current)
-    result
-        .removed
-        .extend(baseline_shots.difference(&current_shots).cloned());
-
-    // Get differ plugin if available
+    let baseline_shots: HashSet<String> = list_png_stems(&baseline_dir)?.into_iter().collect();
     let differ_plugin = plugin_registry.and_then(|r| r.get(PluginCategory::Differ));
 
-    // Compare shots that exist in both
-    for name in current_shots.intersection(&baseline_shots) {
+    let mut result = DiffResult {
+        failed: capture.failed.clone(),
+        ..DiffResult::default()
+    };
+
+    for shot in &capture.captured {
+        let name = &shot.name;
+        if !baseline_shots.contains(name) {
+            result.added.push(name.clone());
+            continue;
+        }
+
         let baseline_path = baseline_dir.join(format!("{}.png", name));
         let current_path = current_dir.join(format!("{}.png", name));
         let diff_path = diff_dir.join(format!("{}.png", name));
 
         debug!("🔍 Comparing: {}", name);
 
-        let diff_percentage = if let Some(plugin) = differ_plugin {
-            // Use plugin for comparison
-            compare_with_plugin(
+        let comparison = match differ_plugin {
+            Some(plugin) => compare_with_plugin(
                 plugin,
                 &baseline_path,
                 &current_path,
                 &diff_path,
                 config.threshold,
                 working_dir,
-            )?
-        } else {
-            // Use built-in comparison
-            compare_images(&baseline_path, &current_path, &diff_path, config.threshold)?
+            ),
+            None => compare_images(&baseline_path, &current_path, &diff_path, config.threshold),
+        };
+
+        let diff_percentage = match comparison.and_then(validate_percentage) {
+            Ok(value) => value,
+            Err(error) => {
+                result.failed.push(FailedShot {
+                    name: name.clone(),
+                    error: format!("{:#}", error),
+                });
+                continue;
+            }
         };
 
         if diff_percentage > config.threshold {
@@ -186,26 +225,80 @@ pub fn diff_images<P: AsRef<Path>>(
         } else {
             debug!("✅ {}: unchanged", name);
             result.unchanged.push(name.clone());
-            // Remove diff file if it exists and shot is unchanged
             let _ = std::fs::remove_file(&diff_path);
         }
     }
 
-    // Sort for consistent output
+    let attempted: HashSet<&str> = capture
+        .captured
+        .iter()
+        .map(|c| c.name.as_str())
+        .chain(capture.failed.iter().map(|f| f.name.as_str()))
+        .collect();
+    result.removed = baseline_shots
+        .into_iter()
+        .filter(|name| {
+            !known.contains(name) && !attempted.contains(name.as_str()) && in_scope(name)
+        })
+        .collect();
+
     result.unchanged.sort();
     result.added.sort();
     result.removed.sort();
     result.changed.sort_by(|a, b| a.name.cmp(&b.name));
+    result.failed.sort_by(|a, b| a.name.cmp(&b.name));
 
     info!(
-        "📊 Diff complete: {} unchanged, {} changed, {} added, {} removed",
+        "📊 Diff complete: {} unchanged, {} changed, {} added, {} removed, {} failed",
         result.unchanged.len(),
         result.changed.len(),
         result.added.len(),
-        result.removed.len()
+        result.removed.len(),
+        result.failed.len()
     );
 
     Ok(result)
+}
+
+/// Rejects percentages that are not a finite number in `0..=100`.
+fn validate_percentage(value: f64) -> Result<f64> {
+    if value.is_finite() && (0.0..=100.0).contains(&value) {
+        Ok(value)
+    } else {
+        anyhow::bail!(
+            "Differ returned an invalid diff percentage ({}); expected a number between 0 and 100",
+            value
+        )
+    }
+}
+
+/// Lists the stems of PNG files in `dir`, or nothing if it does not exist.
+fn list_png_stems(dir: &Path) -> Result<Vec<String>> {
+    let mut names = Vec::new();
+    if !dir.exists() {
+        return Ok(names);
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "png") {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                names.push(stem.to_string());
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// Removes diff images from a previous run so the report never shows stale ones.
+fn clear_png_files(dir: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "png") {
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
 }
 
 /// Compares two images using a differ plugin.
@@ -232,6 +325,28 @@ fn compare_with_plugin(
     Ok(output.diff_percentage)
 }
 
+/// Loads an image, explaining the common Git LFS pointer-file failure.
+fn load_image(path: &Path, label: &str) -> Result<RgbaImage> {
+    match image::open(path) {
+        Ok(image) => Ok(image.to_rgba8()),
+        Err(error) => {
+            let is_lfs_pointer = std::fs::read(path)
+                .map(|bytes| bytes.starts_with(b"version https://git-lfs"))
+                .unwrap_or(false);
+            if is_lfs_pointer {
+                anyhow::bail!(
+                    "{} image '{}' is a Git LFS pointer, not a PNG. Run 'git lfs pull' \
+                     (or enable LFS in your CI checkout) before running pixelguard.",
+                    label,
+                    path.display()
+                );
+            }
+            Err(error)
+                .with_context(|| format!("Failed to load {} image: {}", label, path.display()))
+        }
+    }
+}
+
 /// Compares two images and generates a diff image.
 ///
 /// Returns the percentage of pixels that differ.
@@ -241,13 +356,8 @@ fn compare_images(
     diff_path: &Path,
     threshold: f64,
 ) -> Result<f64> {
-    let baseline = image::open(baseline_path)
-        .with_context(|| format!("Failed to load baseline image: {}", baseline_path.display()))?
-        .to_rgba8();
-
-    let current = image::open(current_path)
-        .with_context(|| format!("Failed to load current image: {}", current_path.display()))?
-        .to_rgba8();
+    let baseline = load_image(baseline_path, "baseline")?;
+    let current = load_image(current_path, "current")?;
 
     // Handle size mismatch
     if baseline.dimensions() != current.dimensions() {
@@ -269,47 +379,50 @@ fn compare_images(
     }
 
     let (width, height) = baseline.dimensions();
-    let total_pixels = (width * height) as f64;
+    let total_pixels = u64::from(width) * u64::from(height);
+    if total_pixels == 0 {
+        anyhow::bail!(
+            "Screenshot '{}' is empty (0 pixels)",
+            current_path.display()
+        );
+    }
     let mut diff_count = 0u64;
 
     let mut diff_img: RgbaImage = ImageBuffer::new(width, height);
 
-    for y in 0..height {
-        for x in 0..width {
-            let baseline_pixel = baseline.get_pixel(x, y);
-            let current_pixel = current.get_pixel(x, y);
+    for (x, y, current_pixel) in current.enumerate_pixels() {
+        let baseline_pixel = baseline.get_pixel(x, y);
 
-            if pixels_differ(baseline_pixel, current_pixel, threshold) {
-                diff_count += 1;
+        if pixels_differ(baseline_pixel, current_pixel, threshold) {
+            diff_count += 1;
 
-                // Create diff pixel: red overlay on dimmed current
-                diff_img.put_pixel(
-                    x,
-                    y,
-                    Rgba([
-                        255,
-                        ((current_pixel[1] as f32) * 0.3) as u8,
-                        ((current_pixel[2] as f32) * 0.3) as u8,
-                        255,
-                    ]),
-                );
-            } else {
-                // Dimmed version of current for context
-                diff_img.put_pixel(
-                    x,
-                    y,
-                    Rgba([
-                        ((current_pixel[0] as f32) * 0.5) as u8,
-                        ((current_pixel[1] as f32) * 0.5) as u8,
-                        ((current_pixel[2] as f32) * 0.5) as u8,
-                        current_pixel[3],
-                    ]),
-                );
-            }
+            // Create diff pixel: red overlay on dimmed current
+            diff_img.put_pixel(
+                x,
+                y,
+                Rgba([
+                    255,
+                    ((current_pixel[1] as f32) * 0.3) as u8,
+                    ((current_pixel[2] as f32) * 0.3) as u8,
+                    255,
+                ]),
+            );
+        } else {
+            // Dimmed version of current for context
+            diff_img.put_pixel(
+                x,
+                y,
+                Rgba([
+                    ((current_pixel[0] as f32) * 0.5) as u8,
+                    ((current_pixel[1] as f32) * 0.5) as u8,
+                    ((current_pixel[2] as f32) * 0.5) as u8,
+                    current_pixel[3],
+                ]),
+            );
         }
     }
 
-    let diff_percentage = (diff_count as f64 / total_pixels) * 100.0;
+    let diff_percentage = (diff_count as f64 / total_pixels as f64) * 100.0;
 
     // Only save diff image if there are differences
     if diff_count > 0 {
@@ -403,6 +516,7 @@ mod tests {
             changed: Vec::new(),
             added: Vec::new(),
             removed: Vec::new(),
+            failed: Vec::new(),
         };
 
         assert!(result.unchanged.is_empty());
@@ -418,6 +532,7 @@ mod tests {
             changed: Vec::new(),
             added: Vec::new(),
             removed: Vec::new(),
+            failed: Vec::new(),
         };
         assert!(!result.has_changes());
     }
@@ -436,6 +551,7 @@ mod tests {
             }],
             added: Vec::new(),
             removed: Vec::new(),
+            failed: Vec::new(),
         };
         assert!(result.has_changes());
     }
@@ -447,6 +563,7 @@ mod tests {
             changed: Vec::new(),
             added: vec!["new".to_string()],
             removed: Vec::new(),
+            failed: Vec::new(),
         };
         assert!(result.has_changes());
     }
@@ -458,6 +575,7 @@ mod tests {
             changed: Vec::new(),
             added: Vec::new(),
             removed: vec!["old".to_string()],
+            failed: Vec::new(),
         };
         assert!(result.has_changes());
     }
@@ -489,5 +607,112 @@ mod tests {
         };
 
         assert!(has_baseline(&config, dir.path()));
+    }
+
+    fn write_png(path: &Path, color: [u8; 4]) {
+        let img: RgbaImage = ImageBuffer::from_pixel(4, 4, Rgba(color));
+        img.save(path).unwrap();
+    }
+
+    fn captured(dir: &Path, names: &[&str]) -> CaptureResult {
+        CaptureResult {
+            captured: names
+                .iter()
+                .map(|name| crate::capture::CapturedShot {
+                    name: name.to_string(),
+                    path: dir.join(format!("{}.png", name)),
+                })
+                .collect(),
+            failed: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn diff_captured_ignores_stale_files_and_reports_failures() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::default();
+        let baseline = dir.path().join(".pixelguard/baseline");
+        let current = dir.path().join(".pixelguard/current");
+        std::fs::create_dir_all(&baseline).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        write_png(&baseline.join("a.png"), [0, 0, 0, 255]);
+        write_png(&baseline.join("b.png"), [0, 0, 0, 255]);
+        write_png(&current.join("a.png"), [0, 0, 0, 255]);
+        write_png(&current.join("b.png"), [0, 0, 0, 255]);
+
+        let mut capture = captured(&current, &["a"]);
+        capture.failed.push(FailedShot {
+            name: "b".to_string(),
+            error: "timeout".to_string(),
+        });
+        let known: HashSet<String> = ["a".to_string(), "b".to_string()].into_iter().collect();
+
+        let result = diff_captured(&config, dir.path(), None, &capture, &known, |_| true).unwrap();
+
+        assert_eq!(result.unchanged, vec!["a".to_string()]);
+        assert_eq!(result.failed.len(), 1);
+        assert!(result.removed.is_empty());
+        assert!(!result.passed());
+    }
+
+    #[test]
+    fn diff_captured_only_reports_removals_in_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::default();
+        let baseline = dir.path().join(".pixelguard/baseline");
+        let current = dir.path().join(".pixelguard/current");
+        std::fs::create_dir_all(&baseline).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        write_png(&baseline.join("button.png"), [0, 0, 0, 255]);
+        write_png(&baseline.join("card.png"), [0, 0, 0, 255]);
+        write_png(&baseline.join("deleted-story.png"), [0, 0, 0, 255]);
+        write_png(&current.join("button.png"), [0, 0, 0, 255]);
+
+        let capture = captured(&current, &["button"]);
+        let known: HashSet<String> = ["button".to_string(), "card".to_string()]
+            .into_iter()
+            .collect();
+
+        let filtered = diff_captured(&config, dir.path(), None, &capture, &known, |n| {
+            n.contains("button")
+        })
+        .unwrap();
+        assert!(filtered.removed.is_empty());
+        assert!(filtered.passed());
+
+        let unfiltered =
+            diff_captured(&config, dir.path(), None, &capture, &known, |_| true).unwrap();
+        assert_eq!(unfiltered.removed, vec!["deleted-story".to_string()]);
+    }
+
+    #[test]
+    fn unreadable_baseline_is_a_failure_not_a_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::default();
+        let baseline = dir.path().join(".pixelguard/baseline");
+        let current = dir.path().join(".pixelguard/current");
+        std::fs::create_dir_all(&baseline).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::write(
+            baseline.join("a.png"),
+            "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1\n",
+        )
+        .unwrap();
+        write_png(&current.join("a.png"), [0, 0, 0, 255]);
+
+        let capture = captured(&current, &["a"]);
+        let known: HashSet<String> = ["a".to_string()].into_iter().collect();
+        let result = diff_captured(&config, dir.path(), None, &capture, &known, |_| true).unwrap();
+
+        assert_eq!(result.failed.len(), 1);
+        assert!(result.failed[0].error.contains("Git LFS"));
+    }
+
+    #[test]
+    fn invalid_plugin_percentages_are_rejected() {
+        assert!(validate_percentage(f64::NAN).is_err());
+        assert!(validate_percentage(-1.0).is_err());
+        assert!(validate_percentage(250.0).is_err());
+        assert_eq!(validate_percentage(12.5).unwrap(), 12.5);
     }
 }

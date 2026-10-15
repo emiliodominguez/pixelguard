@@ -8,15 +8,20 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Args;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-use pixelguard_core::{capture::update_baseline, plugins};
+use pixelguard_core::{
+    capture::{update_baseline_exact, validate_screenshot_name},
+    plugins,
+};
 use serde::Deserialize;
 use tracing::info;
+
+use super::decisions::{check_approval, ApprovalCheck};
 
 /// Arguments for the review command.
 #[derive(Args)]
 pub struct ReviewArgs {
     /// Path to config file (default: pixelguard.config.json)
-    #[arg(long, short)]
+    #[arg(long, short, env = "PIXELGUARD_CONFIG")]
     config: Option<String>,
 
     /// Path to results.json file (default: .pixelguard/results.json)
@@ -31,19 +36,8 @@ pub struct ReviewArgs {
 /// Structure of the results.json file.
 #[derive(Debug, Deserialize)]
 struct ResultsJson {
-    /// Summary statistics
-    summary: ResultsSummary,
     /// Detailed results
     results: ResultsDetail,
-}
-
-/// Summary of results.
-#[derive(Debug, Deserialize)]
-struct ResultsSummary {
-    /// Whether all tests passed
-    passed: bool,
-    /// Number of changed shots
-    changed: usize,
 }
 
 /// Detailed results by category.
@@ -61,11 +55,9 @@ struct ChangedShot {
     name: String,
     /// Percentage of pixels that differ
     diff_percentage: f64,
-    /// Viewport name (if multi-viewport)
-    #[allow(dead_code)]
-    viewport: Option<String>,
-    /// Path to diff image
-    diff_path: String,
+    /// SHA-256 of the current image when the report was generated
+    #[serde(default)]
+    current_hash: Option<String>,
 }
 
 /// Action the user can take for each shot.
@@ -96,11 +88,12 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
 
     // Load config
     let config = super::load_config(&working_dir, args.config.as_deref())?;
+    let output_dir = working_dir.join(&config.output_dir);
 
     // Determine results file path
     let results_path = args
         .results
-        .unwrap_or_else(|| working_dir.join(&config.output_dir).join("results.json"));
+        .unwrap_or_else(|| output_dir.join("results.json"));
 
     // Load results.json
     let results_content = std::fs::read_to_string(&results_path).with_context(|| {
@@ -122,28 +115,42 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
         )
     })?;
 
+    let changed: Vec<ChangedShot> = results
+        .results
+        .changed
+        .into_iter()
+        .filter(|shot| validate_screenshot_name(&shot.name).is_ok())
+        .collect();
+
     // Check if there are changes to review
-    if results.summary.passed || results.summary.changed == 0 {
-        println!("✅ All tests passed! No changes to review.");
-        println!("\n💡 Tip: Visual regression tests are passing. Great work!");
+    if changed.is_empty() {
+        println!("✅ No changed screenshots to review.");
         return Ok(());
     }
 
-    let changed = &results.results.changed;
     println!(
         "\n🔍 Found {} changed screenshot(s) to review\n",
         changed.len()
     );
 
     let theme = ColorfulTheme::default();
-    let mut approved: Vec<String> = Vec::new();
-    let mut rejected: Vec<String> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
+    let mut approved: Vec<&ChangedShot> = Vec::new();
+    let mut rejected = 0usize;
+    let mut skipped = 0usize;
 
-    let output_dir = working_dir.join(&config.output_dir);
+    let actions = [
+        ReviewAction::Approve,
+        ReviewAction::Reject,
+        ReviewAction::Skip,
+        ReviewAction::ViewDiff,
+        ReviewAction::Quit,
+    ];
 
-    // Review each changed shot
-    for (i, shot) in changed.iter().enumerate() {
+    'review: for (i, shot) in changed.iter().enumerate() {
+        if args.open_diff {
+            open_diff(&output_dir, &shot.name);
+        }
+
         loop {
             println!(
                 "\n[{}/{}] {} ({:.2}% different)",
@@ -153,80 +160,75 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
                 shot.diff_percentage
             );
 
-            let actions = vec![
-                ReviewAction::Approve,
-                ReviewAction::Reject,
-                ReviewAction::Skip,
-                ReviewAction::ViewDiff,
-                ReviewAction::Quit,
-            ];
-
             let selection = Select::with_theme(&theme)
                 .with_prompt("What would you like to do?")
-                .items(&actions)
+                .items(actions)
                 .default(0)
                 .interact()?;
 
             match actions[selection] {
                 ReviewAction::Approve => {
-                    approved.push(shot.name.clone());
+                    approved.push(shot);
                     println!("  \u{2713} Approved: {}", shot.name);
                     break;
                 }
                 ReviewAction::Reject => {
-                    rejected.push(shot.name.clone());
+                    rejected += 1;
                     println!("  \u{2717} Rejected: {}", shot.name);
                     break;
                 }
                 ReviewAction::Skip => {
-                    skipped.push(shot.name.clone());
+                    skipped += 1;
                     println!("  \u{2192} Skipped: {}", shot.name);
                     break;
                 }
-                ReviewAction::ViewDiff => {
-                    let diff_path = output_dir.join(&shot.diff_path);
-                    if diff_path.exists() {
-                        if let Err(e) = open::that(&diff_path) {
-                            eprintln!("Could not open diff image: {}", e);
-                        } else {
-                            println!("  Opened diff image");
-                        }
-                    } else {
-                        eprintln!("  Diff image not found at {}", diff_path.display());
-                    }
-                    // Continue the loop to prompt again
-                }
+                ReviewAction::ViewDiff => open_diff(&output_dir, &shot.name),
                 ReviewAction::Quit => {
                     println!("\nQuitting review...");
-                    // Treat remaining as skipped
-                    for remaining in changed.iter().skip(i) {
-                        skipped.push(remaining.name.clone());
-                    }
-                    break;
+                    skipped += changed.len() - i;
+                    break 'review;
                 }
             }
-        }
-
-        // Check if user quit
-        if skipped.len() > changed.len() - i - 1 {
-            break;
         }
     }
 
     // Summary
     println!("\n─── 📋 Review Summary ───");
     println!("✅ Approved: {}", approved.len());
-    println!("❌ Rejected: {}", rejected.len());
-    println!("⏭️  Skipped:  {}", skipped.len());
+    println!("❌ Rejected: {}", rejected);
+    println!("⏭️  Skipped:  {}", skipped);
 
     if approved.is_empty() {
         println!("\nℹ️  No changes approved. Baseline remains unchanged.");
         return Ok(());
     }
 
+    // Only promote images that are still exactly what the report showed.
+    let mut applicable = Vec::new();
+    for shot in &approved {
+        match check_approval(&output_dir, &shot.name, shot.current_hash.as_deref()) {
+            ApprovalCheck::Matches | ApprovalCheck::Unverified => {
+                applicable.push(shot.name.clone())
+            }
+            ApprovalCheck::Stale => println!(
+                "⚠️  {} changed on disk since the report was generated; skipping it. \
+                 Run 'pixelguard test' and review again.",
+                shot.name
+            ),
+            ApprovalCheck::Missing => {
+                println!("⚠️  {} has no current screenshot; skipping it.", shot.name)
+            }
+        }
+    }
+
+    if applicable.is_empty() {
+        println!("\nℹ️  Nothing left to apply. Baseline remains unchanged.");
+        return Ok(());
+    }
+
     // Confirm before applying
     println!("\nApproved shots to update:");
-    for name in &approved {
+    for name in &applicable {
         println!("  - {}", name);
     }
 
@@ -244,18 +246,30 @@ pub async fn run(args: ReviewArgs) -> Result<()> {
     let plugin_registry = plugins::init_plugins(&config, &working_dir)?;
 
     // Apply approved changes
-    let updated_count = update_baseline(
-        &config,
-        &working_dir,
-        Some(&plugin_registry),
-        Some(&approved),
-    )?;
+    let updated =
+        update_baseline_exact(&config, &working_dir, Some(&plugin_registry), &applicable)?;
 
-    info!("Updated {} baseline screenshot(s)", updated_count);
-    println!("\n✅ Updated {} baseline(s)", updated_count);
+    info!("Updated {} baseline screenshot(s)", updated.len());
+    println!("\n✅ Updated {} baseline(s)", updated.len());
     println!("\n💡 Next steps:");
     println!("  1️⃣ Commit the updated baselines to version control");
     println!("  2️⃣ Run 'pixelguard test' to verify the changes");
 
     Ok(())
+}
+
+/// Opens the diff image for a validated screenshot name.
+///
+/// The path is derived from the name, never read from results.json, so a
+/// tampered results file cannot make this open an arbitrary file or app.
+fn open_diff(output_dir: &std::path::Path, name: &str) {
+    let diff_path = output_dir.join("diff").join(format!("{}.png", name));
+    if !diff_path.is_file() {
+        eprintln!("  Diff image not found at {}", diff_path.display());
+        return;
+    }
+    match open::that(&diff_path) {
+        Ok(()) => println!("  Opened diff image"),
+        Err(e) => eprintln!("Could not open diff image: {}", e),
+    }
 }

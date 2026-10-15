@@ -10,7 +10,7 @@ use pixelguard_core::plugins;
 #[derive(Args)]
 pub struct PluginsArgs {
     /// Path to config file (default: pixelguard.config.json)
-    #[arg(long, short)]
+    #[arg(long, short, env = "PIXELGUARD_CONFIG")]
     config: Option<String>,
 
     /// Output in JSON format

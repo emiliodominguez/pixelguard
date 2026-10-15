@@ -34,6 +34,7 @@ pub mod config;
 pub mod detect;
 pub mod diff;
 pub mod plugins;
+pub mod process;
 pub mod report;
 pub mod storage;
 

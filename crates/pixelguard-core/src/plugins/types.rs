@@ -185,8 +185,13 @@ pub struct CaptureInput {
     /// Base URL of the dev server
     pub base_url: String,
 
-    /// Viewport dimensions
+    /// Viewport dimensions (the legacy single viewport)
     pub viewport: CaptureViewport,
+
+    /// Every viewport to capture. Save each shot as `{name}.png` for the
+    /// `default` viewport and `{name}@{viewport}.png` otherwise.
+    #[serde(default)]
+    pub viewports: Vec<CaptureNamedViewport>,
 
     /// Output directory for screenshots
     pub output_dir: String,
@@ -213,6 +218,19 @@ pub struct CaptureShot {
     /// Optional delay in ms
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delay: Option<u64>,
+}
+
+/// A named viewport for capture input.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureNamedViewport {
+    /// Viewport name (`default` when no `viewports` are configured)
+    pub name: String,
+
+    /// Width in pixels
+    pub width: u32,
+
+    /// Height in pixels
+    pub height: u32,
 }
 
 /// Viewport for capture input.
@@ -269,7 +287,7 @@ pub struct DifferInput {
     /// Path to write diff image
     pub diff_path: String,
 
-    /// Diff threshold (0.0 to 1.0)
+    /// Percentage of pixels (0 to 100) allowed to differ
     pub threshold: f64,
 
     /// Plugin options
@@ -321,6 +339,10 @@ pub struct ReporterDiffResult {
 
     /// Removed shots (baseline exists, no current)
     pub removed: Vec<String>,
+
+    /// Shots that could not be captured or compared
+    #[serde(default)]
+    pub failed: Vec<String>,
 }
 
 /// A changed shot for reporter input.

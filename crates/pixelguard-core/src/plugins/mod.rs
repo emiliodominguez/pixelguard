@@ -72,10 +72,10 @@ use crate::Config;
 
 pub use registry::PluginRegistry;
 pub use types::{
-    CaptureInput, CaptureOutput, CaptureShot, CaptureViewport, CapturedShot, DifferInput,
-    DifferOutput, FailedShot, LoadedPlugin, NotifierInput, PluginCategory, PluginManifest,
-    PluginResult, ReporterChangedShot, ReporterConfig, ReporterDiffResult, ReporterInput,
-    ReporterOutput, StorageInput, StorageOutput,
+    CaptureInput, CaptureNamedViewport, CaptureOutput, CaptureShot, CaptureViewport, CapturedShot,
+    DifferInput, DifferOutput, FailedShot, LoadedPlugin, NotifierInput, PluginCategory,
+    PluginManifest, PluginResult, ReporterChangedShot, ReporterConfig, ReporterDiffResult,
+    ReporterInput, ReporterOutput, StorageInput, StorageOutput,
 };
 
 /// Initializes the plugin system by discovering and loading configured plugins.

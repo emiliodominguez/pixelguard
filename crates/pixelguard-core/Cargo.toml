@@ -21,6 +21,7 @@ glob.workspace = true
 tempfile.workspace = true
 base64.workspace = true
 chrono.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -4,12 +4,14 @@
 //! with side-by-side comparison of baseline, current, and diff images.
 //! Additionally generates a machine-readable JSON export (results.json) for CI integration.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::Serialize;
-use tracing::info;
+use sha2::{Digest, Sha256};
+use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::diff::DiffResult;
@@ -40,7 +42,9 @@ pub struct ResultsSummary {
     pub added: usize,
     /// Number of removed shots
     pub removed: usize,
-    /// Whether all tests passed (no changes)
+    /// Number of shots that could not be captured or compared
+    pub failed: usize,
+    /// Whether all tests passed (no changes and no failures)
     pub passed: bool,
 }
 
@@ -55,6 +59,17 @@ pub struct ResultsDetail {
     pub removed: Vec<String>,
     /// Names of unchanged shots
     pub unchanged: Vec<String>,
+    /// Shots that could not be captured or compared
+    pub failed: Vec<FailedShotJson>,
+}
+
+/// Failed shot information for JSON export
+#[derive(Debug, Serialize)]
+pub struct FailedShotJson {
+    /// Name of the shot
+    pub name: String,
+    /// Why it failed
+    pub error: String,
 }
 
 /// Changed shot information for JSON export
@@ -74,6 +89,24 @@ pub struct ChangedShotJson {
     pub current_path: String,
     /// Path to diff image (relative to output dir)
     pub diff_path: String,
+    /// SHA-256 of the current image, so approvals can be tied to what was reviewed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_hash: Option<String>,
+}
+
+/// Returns the lowercase hex SHA-256 of a file.
+///
+/// Review decisions record this hash, and `apply`/`review` refuse to promote a
+/// screenshot whose bytes no longer match what the reviewer approved.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read.
+pub fn screenshot_hash(path: &Path) -> Result<String> {
+    let bytes =
+        std::fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let digest = Sha256::digest(&bytes);
+    Ok(digest.iter().map(|byte| format!("{:02x}", byte)).collect())
 }
 
 /// Generates an HTML report and JSON export from diff results.
@@ -110,13 +143,23 @@ pub fn generate_report<P: AsRef<Path>>(
     let report_path = output_dir.join("report.html");
     let json_path = output_dir.join("results.json");
 
+    let mut hashes = HashMap::new();
+    for shot in &result.changed {
+        match screenshot_hash(&shot.current_path) {
+            Ok(hash) => {
+                hashes.insert(shot.name.clone(), hash);
+            }
+            Err(error) => warn!("⚠️  Could not hash {}: {:#}", shot.name, error),
+        }
+    }
+
     // Generate HTML report
-    let html = generate_html(result);
+    let html = generate_html(result, &hashes);
     std::fs::write(&report_path, html)
         .with_context(|| format!("Failed to write report to {}", report_path.display()))?;
 
     // Generate JSON export
-    let json = generate_results_json(result);
+    let json = generate_results_json(result, &hashes);
     let json_str =
         serde_json::to_string_pretty(&json).context("Failed to serialize results to JSON")?;
     std::fs::write(&json_path, json_str)
@@ -131,10 +174,13 @@ pub fn generate_report<P: AsRef<Path>>(
 ///
 /// This creates a machine-readable format suitable for CI integration,
 /// custom tooling, or programmatic analysis.
-fn generate_results_json(result: &DiffResult) -> ResultsJson {
-    let total =
-        result.unchanged.len() + result.changed.len() + result.added.len() + result.removed.len();
-    let passed = result.changed.is_empty() && result.added.is_empty() && result.removed.is_empty();
+fn generate_results_json(result: &DiffResult, hashes: &HashMap<String, String>) -> ResultsJson {
+    let total = result.unchanged.len()
+        + result.changed.len()
+        + result.added.len()
+        + result.removed.len()
+        + result.failed.len();
+    let passed = result.passed();
 
     ResultsJson {
         version: "1.0",
@@ -145,6 +191,7 @@ fn generate_results_json(result: &DiffResult) -> ResultsJson {
             changed: result.changed.len(),
             added: result.added.len(),
             removed: result.removed.len(),
+            failed: result.failed.len(),
             passed,
         },
         results: ResultsDetail {
@@ -158,11 +205,20 @@ fn generate_results_json(result: &DiffResult) -> ResultsJson {
                     baseline_path: format!("baseline/{}.png", shot.name),
                     current_path: format!("current/{}.png", shot.name),
                     diff_path: format!("diff/{}.png", shot.name),
+                    current_hash: hashes.get(&shot.name).cloned(),
                 })
                 .collect(),
             added: result.added.clone(),
             removed: result.removed.clone(),
             unchanged: result.unchanged.clone(),
+            failed: result
+                .failed
+                .iter()
+                .map(|failure| FailedShotJson {
+                    name: failure.name.clone(),
+                    error: failure.error.clone(),
+                })
+                .collect(),
         },
     }
 }
@@ -204,9 +260,12 @@ mod icons {
     pub const DOWNLOAD: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>"#;
 }
 
-fn generate_html(result: &DiffResult) -> String {
-    let total =
-        result.unchanged.len() + result.changed.len() + result.added.len() + result.removed.len();
+fn generate_html(result: &DiffResult, hashes: &HashMap<String, String>) -> String {
+    let total = result.unchanged.len()
+        + result.changed.len()
+        + result.added.len()
+        + result.removed.len()
+        + result.failed.len();
 
     let changed_html = if result.changed.is_empty() {
         String::new()
@@ -233,8 +292,8 @@ fn generate_html(result: &DiffResult) -> String {
                     </div>
                     <div class="shot-header-right">
                         <div class="shot-actions">
-                            <button class="action-btn action-btn--approve" data-shot="{name}" data-action="approve" title="Approve">{approve_icon}</button>
-                            <button class="action-btn action-btn--reject" data-shot="{name}" data-action="reject" title="Reject">{reject_icon}</button>
+                            <button class="action-btn action-btn--approve" data-shot="{name}" data-hash="{hash}" data-action="approve" title="Approve">{approve_icon}</button>
+                            <button class="action-btn action-btn--reject" data-shot="{name}" data-hash="{hash}" data-action="reject" title="Reject">{reject_icon}</button>
                         </div>
                         <span class="badge badge--diff">{diff:.2}% changed</span>
                     </div>
@@ -247,24 +306,24 @@ fn generate_html(result: &DiffResult) -> String {
                 <div class="comparison-views">
                     <div class="view-side-by-side active">
                         <div class="comparison">
-                            <div class="image-panel" data-zoomable data-src="baseline/{name}.png" data-label="Baseline">
+                            <div class="image-panel" data-zoomable data-src="baseline/{file}.png" data-label="Baseline">
                                 <div class="image-label">Baseline</div>
                                 <div class="image-frame">
-                                    <img src="baseline/{name}.png" alt="Baseline" loading="lazy">
+                                    <img src="baseline/{file}.png" alt="Baseline" loading="lazy">
                                     <div class="zoom-hint">{zoom_icon}</div>
                                 </div>
                             </div>
-                            <div class="image-panel" data-zoomable data-src="current/{name}.png" data-label="Current">
+                            <div class="image-panel" data-zoomable data-src="current/{file}.png" data-label="Current">
                                 <div class="image-label">Current</div>
                                 <div class="image-frame">
-                                    <img src="current/{name}.png" alt="Current" loading="lazy">
+                                    <img src="current/{file}.png" alt="Current" loading="lazy">
                                     <div class="zoom-hint">{zoom_icon}</div>
                                 </div>
                             </div>
-                            <div class="image-panel" data-zoomable data-src="diff/{name}.png" data-label="Diff">
+                            <div class="image-panel" data-zoomable data-src="diff/{file}.png" data-label="Diff">
                                 <div class="image-label">Diff</div>
                                 <div class="image-frame image-frame--diff">
-                                    <img src="diff/{name}.png" alt="Diff" loading="lazy">
+                                    <img src="diff/{file}.png" alt="Diff" loading="lazy">
                                     <div class="zoom-hint">{zoom_icon}</div>
                                 </div>
                             </div>
@@ -273,10 +332,10 @@ fn generate_html(result: &DiffResult) -> String {
                     <div class="view-slider">
                         <div class="slider-container">
                             <div class="slider-baseline">
-                                <img src="baseline/{name}.png" alt="Baseline" loading="lazy">
+                                <img src="baseline/{file}.png" alt="Baseline" loading="lazy">
                             </div>
                             <div class="slider-current">
-                                <img src="current/{name}.png" alt="Current" loading="lazy">
+                                <img src="current/{file}.png" alt="Current" loading="lazy">
                             </div>
                             <span class="slider-label slider-label--left">Baseline</span>
                             <span class="slider-label slider-label--right">Current</span>
@@ -290,8 +349,8 @@ fn generate_html(result: &DiffResult) -> String {
                         </div>
                     </div>
                     <div class="view-diff">
-                        <div class="diff-only-container" data-zoomable data-src="diff/{name}.png" data-label="Diff">
-                            <img src="diff/{name}.png" alt="Diff" loading="lazy">
+                        <div class="diff-only-container" data-zoomable data-src="diff/{file}.png" data-label="Diff">
+                            <img src="diff/{file}.png" alt="Diff" loading="lazy">
                             <div class="zoom-hint">{zoom_icon}</div>
                         </div>
                     </div>
@@ -299,6 +358,8 @@ fn generate_html(result: &DiffResult) -> String {
             </div>
             "#,
                     name = html_escape(&shot.name),
+                    file = html_escape(&url_path_segment(&shot.name)),
+                    hash = html_escape(hashes.get(&shot.name).map(String::as_str).unwrap_or("")),
                     diff = shot.diff_percentage,
                     viewport_badge = viewport_badge,
                     image_icon = icons::IMAGE,
@@ -348,10 +409,10 @@ fn generate_html(result: &DiffResult) -> String {
                     <span class="badge badge--new">New</span>
                 </div>
                 <div class="comparison comparison--single">
-                    <div class="image-panel" data-zoomable data-src="current/{name}.png" data-label="Current">
+                    <div class="image-panel" data-zoomable data-src="current/{file}.png" data-label="Current">
                         <div class="image-label">Current</div>
                         <div class="image-frame">
-                            <img src="current/{name}.png" alt="Current" loading="lazy">
+                            <img src="current/{file}.png" alt="Current" loading="lazy">
                             <div class="zoom-hint">{zoom_icon}</div>
                         </div>
                     </div>
@@ -359,6 +420,7 @@ fn generate_html(result: &DiffResult) -> String {
             </div>
             "#,
                     name = html_escape(name),
+                    file = html_escape(&url_path_segment(name)),
                     image_icon = icons::IMAGE,
                     zoom_icon = icons::ZOOM_IN,
                 )
@@ -404,10 +466,10 @@ fn generate_html(result: &DiffResult) -> String {
                     <span class="badge badge--removed">Removed</span>
                 </div>
                 <div class="comparison comparison--single">
-                    <div class="image-panel" data-zoomable data-src="baseline/{name}.png" data-label="Baseline (deleted)">
+                    <div class="image-panel" data-zoomable data-src="baseline/{file}.png" data-label="Baseline (deleted)">
                         <div class="image-label">Baseline (deleted)</div>
                         <div class="image-frame">
-                            <img src="baseline/{name}.png" alt="Baseline" loading="lazy">
+                            <img src="baseline/{file}.png" alt="Baseline" loading="lazy">
                             <div class="zoom-hint">{zoom_icon}</div>
                         </div>
                     </div>
@@ -415,6 +477,7 @@ fn generate_html(result: &DiffResult) -> String {
             </div>
             "#,
                     name = html_escape(name),
+                    file = html_escape(&url_path_segment(name)),
                     image_icon = icons::IMAGE,
                     zoom_icon = icons::ZOOM_IN,
                 )
@@ -485,10 +548,59 @@ fn generate_html(result: &DiffResult) -> String {
         )
     };
 
-    let has_issues =
-        !result.changed.is_empty() || !result.added.is_empty() || !result.removed.is_empty();
+    let failed_html = if result.failed.is_empty() {
+        String::new()
+    } else {
+        let items: String = result
+            .failed
+            .iter()
+            .map(|failure| {
+                format!(
+                    r#"
+            <div class="shot-card" data-name="{name}" data-status="failed" data-diff="100">
+                <div class="shot-header">
+                    <div class="shot-title">
+                        <span class="shot-icon">{icon}</span>
+                        <span class="shot-name">{name}</span>
+                    </div>
+                    <span class="badge badge--diff">Failed</span>
+                </div>
+                <pre class="failure-message">{error}</pre>
+            </div>
+            "#,
+                    name = html_escape(&failure.name),
+                    error = html_escape(&failure.error),
+                    icon = icons::X_CIRCLE,
+                )
+            })
+            .collect();
+
+        format!(
+            r#"
+        <section class="section">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="section-icon section-icon--diff">{icon}</span>
+                    <h2>Failed</h2>
+                    <span class="section-count">{count}</span>
+                </div>
+            </div>
+            <div class="section-content">
+                {items}
+            </div>
+        </section>
+        "#,
+            count = result.failed.len(),
+            items = items,
+            icon = icons::X_CIRCLE,
+        )
+    };
+
+    let has_issues = !result.passed();
     let status_class = if has_issues { "fail" } else { "pass" };
-    let status_text = if has_issues {
+    let status_text = if result.has_failures() {
+        "Some screenshots could not be captured or compared"
+    } else if has_issues {
         "Visual changes detected"
     } else {
         "All tests passed"
@@ -529,7 +641,7 @@ fn generate_html(result: &DiffResult) -> String {
         .status-banner.fail .status-icon{{color:var(--color-error)}}
         .status-content h2{{font-size:18px;font-weight:600;margin-bottom:4px}}
         .status-content p{{color:var(--color-text-secondary);font-size:14px}}
-        .stats-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:40px}}
+        .stats-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:40px}}
         @media(max-width:768px){{.stats-grid{{grid-template-columns:repeat(2,1fr)}}}}
         .stat-card{{background:var(--color-bg-elevated);border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:20px;transition:border-color 0.15s,background-color 0.2s}}
         .stat-card:hover{{border-color:var(--color-border)}}
@@ -538,6 +650,7 @@ fn generate_html(result: &DiffResult) -> String {
         .stat-card--fail .stat-value{{color:var(--color-error)}}
         .stat-card--new .stat-value{{color:var(--color-warning)}}
         .stat-card--removed .stat-value{{color:var(--color-info)}}
+        .failure-message{{margin:0 20px 20px;padding:12px;border-radius:var(--radius-sm);background-color:var(--color-error-muted);color:var(--color-text);font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;word-break:break-word}}
         .stat-label{{display:flex;align-items:center;gap:6px;color:var(--color-text-muted);font-size:13px;font-weight:500}}
         .stat-label svg{{opacity:0.7}}
         .section{{margin-bottom:40px}}
@@ -620,7 +733,7 @@ fn generate_html(result: &DiffResult) -> String {
         .search-wrapper svg{{position:absolute;left:12px;color:var(--color-text-muted);pointer-events:none}}
         .search-input{{padding:10px 12px 10px 36px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-size:14px;min-width:220px;transition:border-color 0.15s}}
         .search-input:focus{{outline:none;border-color:var(--color-accent)}}
-        .filter-buttons{{display:flex;gap:4px}}
+        .filter-buttons{{display:flex;flex-wrap:wrap;gap:4px}}
         .filter-btn{{padding:8px 14px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-bg);color:var(--color-text-muted);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s}}
         .filter-btn:hover{{color:var(--color-text);background:var(--color-bg-hover)}}
         .filter-btn.active{{background:var(--color-accent);color:white;border-color:var(--color-accent)}}
@@ -666,6 +779,7 @@ fn generate_html(result: &DiffResult) -> String {
             <div class="stat-card stat-card--fail"><div class="stat-value">{changed}</div><div class="stat-label">{x_icon} Changed</div></div>
             <div class="stat-card stat-card--new"><div class="stat-value">{added}</div><div class="stat-label">{plus_icon} Added</div></div>
             <div class="stat-card stat-card--removed"><div class="stat-value">{removed}</div><div class="stat-label">{minus_icon} Removed</div></div>
+            <div class="stat-card stat-card--fail"><div class="stat-value">{failed}</div><div class="stat-label">{x_icon} Failed</div></div>
         </div>
         <div class="filter-bar">
             <div class="search-wrapper">
@@ -677,6 +791,7 @@ fn generate_html(result: &DiffResult) -> String {
                 <button class="filter-btn" data-filter="changed">Changed</button>
                 <button class="filter-btn" data-filter="added">Added</button>
                 <button class="filter-btn" data-filter="removed">Removed</button>
+                <button class="filter-btn" data-filter="failed">Failed</button>
             </div>
             <select class="sort-select" id="sort-select">
                 <option value="name">Sort by Name</option>
@@ -685,7 +800,7 @@ fn generate_html(result: &DiffResult) -> String {
             </select>
             <button class="export-btn" id="export-decisions" title="Export decisions">{download_icon} Export</button>
         </div>
-        <main id="shots-container">{changed_html}{added_html}{removed_html}{unchanged_html}</main>
+        <main id="shots-container">{failed_html}{changed_html}{added_html}{removed_html}{unchanged_html}</main>
         <footer class="footer">
             <span>Generated by Pixelguard</span>
             <a href="https://github.com/emiliodominguez/pixelguard" target="_blank">View on GitHub {external_link}</a>
@@ -705,7 +820,7 @@ fn generate_html(result: &DiffResult) -> String {
     document.querySelectorAll('.slider-container').forEach(c=>{{const cur=c.querySelector('.slider-current'),h=c.querySelector('.slider-handle'),curImg=cur.querySelector('img');let drag=false;function setImgWidth(){{if(curImg&&c.offsetWidth>0)curImg.style.width=c.offsetWidth+'px'}}function upd(x){{const r=c.getBoundingClientRect(),p=Math.max(0,Math.min(100,((x-r.left)/r.width)*100));cur.style.width=p+'%';h.style.left=p+'%'}}c.addEventListener('mousedown',e=>{{drag=true;upd(e.clientX)}});document.addEventListener('mousemove',e=>{{if(drag)upd(e.clientX)}});document.addEventListener('mouseup',()=>drag=false);c.addEventListener('touchstart',e=>{{drag=true;upd(e.touches[0].clientX)}},{{passive:true}});c.addEventListener('touchmove',e=>{{if(drag){{upd(e.touches[0].clientX);e.preventDefault()}}}},{{passive:false}});c.addEventListener('touchend',()=>drag=false);setImgWidth();if(curImg)curImg.addEventListener('load',setImgWidth);window.addEventListener('resize',setImgWidth);window.addEventListener('slider-shown',()=>setTimeout(setImgWidth,10))}});
     (function(){{const m=document.getElementById('modal'),img=document.getElementById('modal-image'),lbl=document.getElementById('modal-label'),cls=document.getElementById('modal-close');function open(s,l){{img.src=s;lbl.textContent=l;m.classList.add('active');document.body.style.overflow='hidden'}}function close(){{m.classList.remove('active');document.body.style.overflow=''}}document.querySelectorAll('[data-zoomable]').forEach(el=>el.addEventListener('click',()=>open(el.dataset.src,el.dataset.label)));cls.addEventListener('click',close);m.addEventListener('click',e=>{{if(e.target===m)close()}});document.addEventListener('keydown',e=>{{if(e.key==='Escape')close()}})}})();
     (function(){{const searchInput=document.getElementById('search-input'),sortSelect=document.getElementById('sort-select'),filterBtns=document.querySelectorAll('.filter-btn'),container=document.getElementById('shots-container');let currentFilter='all',currentSearch='';function filterShots(){{const cards=document.querySelectorAll('.shot-card');let visibleCount=0;cards.forEach(card=>{{const name=card.dataset.name.toLowerCase(),status=card.dataset.status,matchesSearch=!currentSearch||name.includes(currentSearch.toLowerCase()),matchesFilter=currentFilter==='all'||status===currentFilter;card.style.display=matchesSearch&&matchesFilter?'':'none';if(matchesSearch&&matchesFilter)visibleCount++}});document.querySelectorAll('.section').forEach(sec=>{{const visible=sec.querySelectorAll('.shot-card:not([style*="display: none"])');sec.style.display=visible.length?'':'none'}});const noResults=document.getElementById('no-results');if(noResults)noResults.style.display=visibleCount===0?'block':'none'}}function sortShots(){{const sections=document.querySelectorAll('.section-content');sections.forEach(section=>{{const cards=[...section.querySelectorAll('.shot-card')];const sortVal=sortSelect.value;cards.sort((a,b)=>{{if(sortVal==='diff-desc')return parseFloat(b.dataset.diff)-parseFloat(a.dataset.diff);if(sortVal==='diff-asc')return parseFloat(a.dataset.diff)-parseFloat(b.dataset.diff);return a.dataset.name.localeCompare(b.dataset.name)}});cards.forEach(card=>section.appendChild(card))}})}}searchInput.addEventListener('input',e=>{{currentSearch=e.target.value;filterShots()}});filterBtns.forEach(btn=>btn.addEventListener('click',()=>{{filterBtns.forEach(b=>b.classList.remove('active'));btn.classList.add('active');currentFilter=btn.dataset.filter;filterShots()}}));sortSelect.addEventListener('change',sortShots)}})();
-    (function(){{let decisions={{}};let serverMode=false;const exportBtn=document.getElementById('export-decisions');async function init(){{try{{const resp=await fetch('/api/decisions');if(resp.ok){{const data=await resp.json();decisions=data.decisions||{{}};serverMode=true;exportBtn.innerHTML='\u2713 Auto-saving';exportBtn.title='Decisions are automatically saved to disk';exportBtn.style.cursor='default';exportBtn.style.borderColor='var(--color-success)';exportBtn.style.color='var(--color-success)';console.log('[pixelguard] Server mode enabled - decisions will auto-save')}}else{{throw new Error('API returned '+resp.status)}}}}catch(e){{decisions=JSON.parse(localStorage.getItem('pg-decisions')||'{{}}');serverMode=false;console.log('[pixelguard] Offline mode - use Export button. Error:',e.message)}}updateUI()}}function updateUI(){{document.querySelectorAll('.shot-card[data-status="changed"]').forEach(card=>{{const name=card.dataset.name,decision=decisions[name];card.classList.remove('decision-approved','decision-rejected');card.querySelectorAll('.action-btn').forEach(b=>b.classList.remove('active'));if(decision){{card.classList.add('decision-'+decision.action+'d');card.querySelector('.action-btn--'+decision.action)?.classList.add('active')}}}})}};async function saveDecisions(){{const data={{version:'1.0',exportedAt:new Date().toISOString(),decisions:decisions}};if(serverMode){{const resp=await fetch('/api/decisions',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});return resp.ok}}else{{localStorage.setItem('pg-decisions',JSON.stringify(decisions));return true}}}}async function makeDecision(name,action){{if(decisions[name]&&decisions[name].action===action){{delete decisions[name]}}else{{decisions[name]={{action:action,timestamp:new Date().toISOString(),source:'browser'}}}}if(serverMode)await saveDecisions();else localStorage.setItem('pg-decisions',JSON.stringify(decisions));updateUI()}}document.querySelectorAll('.action-btn').forEach(btn=>{{btn.addEventListener('click',e=>{{e.stopPropagation();makeDecision(btn.dataset.shot,btn.dataset.action)}})}});exportBtn.addEventListener('click',async()=>{{if(!serverMode){{const data={{version:'1.0',exportedAt:new Date().toISOString(),decisions:decisions}};const blob=new Blob([JSON.stringify(data,null,2)],{{type:'application/json'}});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='pixelguard-decisions.json';a.click();URL.revokeObjectURL(url)}}}});init()}})();
+    (function(){{let decisions={{}};let serverMode=false;const exportBtn=document.getElementById('export-decisions');async function init(){{try{{const resp=await fetch('/api/decisions');if(resp.ok){{const data=await resp.json();decisions=data.decisions||{{}};serverMode=true;exportBtn.innerHTML='\u2713 Auto-saving';exportBtn.title='Decisions are automatically saved to disk';exportBtn.style.cursor='default';exportBtn.style.borderColor='var(--color-success)';exportBtn.style.color='var(--color-success)';console.log('[pixelguard] Server mode enabled - decisions will auto-save')}}else{{throw new Error('API returned '+resp.status)}}}}catch(e){{decisions=JSON.parse(localStorage.getItem('pg-decisions')||'{{}}');serverMode=false;console.log('[pixelguard] Offline mode - use Export button. Error:',e.message)}}updateUI()}}function updateUI(){{document.querySelectorAll('.shot-card[data-status="changed"]').forEach(card=>{{const name=card.dataset.name,expected=card.querySelector('.action-btn')?.dataset.hash||'',decision=decisions[name]&&decisions[name].hash===expected?decisions[name]:undefined;card.classList.remove('decision-approved','decision-rejected');card.querySelectorAll('.action-btn').forEach(b=>b.classList.remove('active'));if(decision){{card.classList.add('decision-'+decision.action+'d');card.querySelector('.action-btn--'+decision.action)?.classList.add('active')}}}})}};async function saveDecisions(){{const data={{version:'1.0',exportedAt:new Date().toISOString(),decisions:decisions}};if(serverMode){{const resp=await fetch('/api/decisions',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});return resp.ok}}else{{localStorage.setItem('pg-decisions',JSON.stringify(decisions));return true}}}}async function makeDecision(name,action,hash){{if(decisions[name]&&decisions[name].action===action){{delete decisions[name]}}else{{decisions[name]={{action:action,timestamp:new Date().toISOString(),source:'browser',hash:hash||''}}}}if(serverMode)await saveDecisions();else localStorage.setItem('pg-decisions',JSON.stringify(decisions));updateUI()}}document.querySelectorAll('.action-btn').forEach(btn=>{{btn.addEventListener('click',e=>{{e.stopPropagation();makeDecision(btn.dataset.shot,btn.dataset.action,btn.dataset.hash)}})}});exportBtn.addEventListener('click',async()=>{{if(!serverMode){{const data={{version:'1.0',exportedAt:new Date().toISOString(),decisions:decisions}};const blob=new Blob([JSON.stringify(data,null,2)],{{type:'application/json'}});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='pixelguard-decisions.json';a.click();URL.revokeObjectURL(url)}}}});init()}})();
     </script>
 </body>
 </html>
@@ -715,6 +830,8 @@ fn generate_html(result: &DiffResult) -> String {
         changed = result.changed.len(),
         added = result.added.len(),
         removed = result.removed.len(),
+        failed = result.failed.len(),
+        failed_html = failed_html,
         status_class = status_class,
         status_text = status_text,
         status_icon = status_icon,
@@ -735,6 +852,22 @@ fn generate_html(result: &DiffResult) -> String {
         search_icon = icons::SEARCH,
         download_icon = icons::DOWNLOAD,
     )
+}
+
+/// Percent-encodes a screenshot name for use as one URL path segment.
+///
+/// Keeps RFC 3986 unreserved characters and encodes everything else, so names
+/// with spaces or non-ASCII characters still resolve to their image files.
+fn url_path_segment(name: &str) -> String {
+    let mut encoded = String::with_capacity(name.len());
+    for byte in name.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'@') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{:02X}", byte));
+        }
+    }
+    encoded
 }
 
 /// Escapes HTML special characters.
@@ -772,9 +905,10 @@ mod tests {
             }],
             added: vec!["new-component".to_string()],
             removed: vec!["old-component".to_string()],
+            failed: vec![],
         };
 
-        let html = generate_html(&result);
+        let html = generate_html(&result, &HashMap::new());
 
         assert!(html.contains("<!DOCTYPE html>"));
         assert!(html.contains("Pixelguard"));
@@ -799,9 +933,10 @@ mod tests {
             }],
             added: vec![],
             removed: vec![],
+            failed: vec![],
         };
 
-        let html = generate_html(&result);
+        let html = generate_html(&result, &HashMap::new());
 
         assert!(html.contains("badge--viewport"));
         assert!(html.contains("mobile"));
@@ -814,9 +949,10 @@ mod tests {
             changed: vec![],
             added: vec![],
             removed: vec![],
+            failed: vec![],
         };
 
-        let html = generate_html(&result);
+        let html = generate_html(&result, &HashMap::new());
 
         assert!(html.contains("<!DOCTYPE html>"));
         assert!(html.contains(">0<"));
@@ -837,11 +973,56 @@ mod tests {
             changed: vec![],
             added: vec![],
             removed: vec![],
+            failed: vec![],
         };
 
         let report_path = generate_report(&config, &result, dir.path()).unwrap();
 
         assert!(report_path.ends_with("report.html"));
         assert!(report_path.exists());
+    }
+
+    #[test]
+    fn generate_html_escapes_and_encodes_hostile_names() {
+        let result = DiffResult {
+            added: vec!["a b<img src=x onerror=alert(1)>".to_string()],
+            ..DiffResult::default()
+        };
+
+        let html = generate_html(&result, &HashMap::new());
+
+        assert!(!html.contains("<img src=x"));
+        assert!(html.contains("current/a%20b%3Cimg%20src%3Dx%20onerror%3Dalert%281%29%3E.png"));
+    }
+
+    #[test]
+    fn failed_shots_fail_the_report_and_json() {
+        let result = DiffResult {
+            unchanged: vec!["ok".to_string()],
+            failed: vec![crate::capture::FailedShot {
+                name: "broken".to_string(),
+                error: "Timeout 30000ms exceeded".to_string(),
+            }],
+            ..DiffResult::default()
+        };
+
+        let html = generate_html(&result, &HashMap::new());
+        let json = generate_results_json(&result, &HashMap::new());
+
+        assert!(html.contains("Timeout 30000ms exceeded"));
+        assert!(!json.summary.passed);
+        assert_eq!(json.summary.failed, 1);
+    }
+
+    #[test]
+    fn screenshot_hash_is_sha256_hex() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("x.png");
+        std::fs::write(&file, b"abc").unwrap();
+
+        assert_eq!(
+            screenshot_hash(&file).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }

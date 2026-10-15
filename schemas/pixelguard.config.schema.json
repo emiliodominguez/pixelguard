@@ -55,6 +55,7 @@
 					"description": "Viewport width in pixels",
 					"default": 1280,
 					"minimum": 1,
+					"maximum": 16384,
 					"examples": [1280, 1920, 375]
 				},
 				"height": {
@@ -62,6 +63,7 @@
 					"description": "Viewport height in pixels",
 					"default": 720,
 					"minimum": 1,
+					"maximum": 16384,
 					"examples": [720, 1080, 667]
 				}
 			},
@@ -75,18 +77,21 @@
 				"properties": {
 					"name": {
 						"type": "string",
-						"description": "Unique name for this viewport (e.g., 'desktop', 'mobile')",
+						"description": "Unique name for this viewport (e.g., 'desktop', 'mobile'). Becomes part of file names.",
+						"pattern": "^[^./\\\\@<>:\"|?*#%\\s]([^/\\\\@<>:\"|?*#%\\u0000-\\u001f]{0,198}[^./\\\\@<>:\"|?*#%\\s])?$",
 						"examples": ["desktop", "tablet", "mobile"]
 					},
 					"width": {
 						"type": "integer",
 						"description": "Viewport width in pixels",
-						"minimum": 1
+						"minimum": 1,
+						"maximum": 16384
 					},
 					"height": {
 						"type": "integer",
 						"description": "Viewport height in pixels",
-						"minimum": 1
+						"minimum": 1,
+						"maximum": 16384
 					}
 				},
 				"required": ["name", "width", "height"],
@@ -102,15 +107,16 @@
 		},
 		"threshold": {
 			"type": "number",
-			"description": "Diff threshold (0.0 to 1.0). Lower values are stricter.",
+			"description": "Percentage of pixels (0 to 100) that may differ before a shot counts as changed. Lower values are stricter.",
 			"default": 0.01,
 			"minimum": 0,
-			"maximum": 1,
-			"examples": [0.01, 0.05, 0.1]
+			"maximum": 100,
+			"examples": [0.01, 0.1, 1]
 		},
 		"outputDir": {
 			"type": "string",
 			"description": "Output directory for screenshots and reports",
+			"minLength": 1,
 			"default": ".pixelguard",
 			"examples": [".pixelguard", "screenshots", ".visual-tests"]
 		},
@@ -119,7 +125,7 @@
 			"description": "Number of concurrent screenshot captures",
 			"default": 4,
 			"minimum": 1,
-			"maximum": 32,
+			"maximum": 64,
 			"examples": [4, 8, 1]
 		},
 		"shots": {
@@ -184,11 +190,13 @@
 			"properties": {
 				"name": {
 					"type": "string",
-					"description": "Unique name for this shot (used as filename)"
+					"description": "Unique name for this shot (used as filename). Must not contain / \\ @ < > : \" | ? * # % or control characters, nor start or end with '.' or whitespace.",
+					"pattern": "^[^./\\\\@<>:\"|?*#%\\s]([^/\\\\@<>:\"|?*#%\\u0000-\\u001f]{0,198}[^./\\\\@<>:\"|?*#%\\s])?$"
 				},
 				"path": {
 					"type": "string",
-					"description": "URL path to navigate to (appended to baseUrl)",
+					"description": "URL path to navigate to (appended to baseUrl). Must start with '/'. Optional for Storybook overrides.",
+					"pattern": "^(/(?!/).*)?$",
 					"examples": ["/", "/about", "/iframe.html?id=button--primary"]
 				},
 				"waitFor": {
@@ -200,10 +208,11 @@
 					"type": "integer",
 					"description": "Delay in milliseconds after page load before capturing",
 					"minimum": 0,
+					"maximum": 300000,
 					"examples": [100, 500, 1000]
 				}
 			},
-			"required": ["name", "path"],
+			"required": ["name"],
 			"additionalProperties": false
 		}
 	},

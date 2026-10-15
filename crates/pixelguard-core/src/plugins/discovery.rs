@@ -72,6 +72,15 @@ fn resolve_plugin_path(name: &str, working_dir: &Path) -> Result<PathBuf> {
     }
 
     // Handle npm packages
+    if !is_valid_package_name(name) {
+        anyhow::bail!(
+            "❌ '{}' is not a valid npm package name.\n\n\
+             💡 Use a package name like 'pixelguard-plugin-x' or '@scope/pixelguard-plugin-x', \
+             or a local path starting with './'.",
+            name
+        );
+    }
+
     let node_modules = working_dir.join("node_modules");
     let package_path = node_modules.join(name);
 
@@ -101,6 +110,32 @@ fn resolve_plugin_path(name: &str, working_dir: &Path) -> Result<PathBuf> {
         name,
         name
     )
+}
+
+/// Returns true for `name` or `@scope/name` with npm-safe characters.
+///
+/// Rejects anything that could make `node_modules/{name}` point elsewhere,
+/// such as `..` segments, extra slashes or backslashes.
+fn is_valid_package_name(name: &str) -> bool {
+    fn valid_segment(segment: &str) -> bool {
+        !segment.is_empty()
+            && !segment.starts_with('.')
+            && !segment.starts_with('_')
+            && segment.chars().all(|c| {
+                c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.' | '_' | '~')
+            })
+    }
+
+    if name.len() > 214 {
+        return false;
+    }
+    match name.strip_prefix('@') {
+        Some(scoped) => match scoped.split_once('/') {
+            Some((scope, package)) => valid_segment(scope) && valid_segment(package),
+            None => false,
+        },
+        None => valid_segment(name),
+    }
 }
 
 /// Validates that a path is a valid plugin package.
@@ -232,5 +267,16 @@ mod tests {
 
         let result = validate_plugin_path(dir.path());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn package_names_cannot_escape_node_modules() {
+        assert!(is_valid_package_name("pixelguard-plugin-s3"));
+        assert!(is_valid_package_name("@acme/pixelguard-plugin-s3"));
+        assert!(!is_valid_package_name("../../evil"));
+        assert!(!is_valid_package_name("foo/../../evil"));
+        assert!(!is_valid_package_name("@acme/../evil"));
+        assert!(!is_valid_package_name("@acme/a/b"));
+        assert!(!is_valid_package_name("foo\\bar"));
     }
 }

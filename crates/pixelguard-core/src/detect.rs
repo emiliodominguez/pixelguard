@@ -12,9 +12,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use serde::Deserialize;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
-use crate::config::Shot;
+use crate::config::{validate_shot, Shot};
 
 /// Detected project type with associated metadata.
 #[derive(Debug, Clone)]
@@ -177,22 +177,20 @@ pub async fn fetch_storybook_stories(base_url: &str) -> Option<Vec<Shot>> {
         .build()
         .ok()?;
 
+    let base_url = base_url.trim_end_matches('/');
+
     // Try index.json first (Storybook 7+)
     let index_url = format!("{}/index.json", base_url);
     if let Ok(response) = client.get(&index_url).send().await {
         if response.status().is_success() {
             if let Ok(index) = response.json::<StorybookIndex>().await {
                 if let Some(entries) = index.entries {
-                    let shots: Vec<Shot> = entries
-                        .into_iter()
-                        .filter(|(_, entry)| entry.entry_type.as_deref() != Some("docs"))
-                        .map(|(_, entry)| Shot {
-                            name: entry.id.clone(),
-                            path: format!("/iframe.html?id={}&viewMode=story", entry.id),
-                            wait_for: Some("#storybook-root".to_string()),
-                            delay: Some(100),
-                        })
-                        .collect();
+                    let shots = stories_to_shots(
+                        entries
+                            .into_values()
+                            .filter(|entry| entry.entry_type.as_deref() != Some("docs"))
+                            .map(|entry| entry.id),
+                    );
 
                     if !shots.is_empty() {
                         return Some(shots);
@@ -208,15 +206,7 @@ pub async fn fetch_storybook_stories(base_url: &str) -> Option<Vec<Shot>> {
         if response.status().is_success() {
             if let Ok(stories) = response.json::<StorybookStories>().await {
                 if let Some(stories_map) = stories.stories {
-                    let shots: Vec<Shot> = stories_map
-                        .into_values()
-                        .map(|story| Shot {
-                            name: story.id.clone(),
-                            path: format!("/iframe.html?id={}&viewMode=story", story.id),
-                            wait_for: Some("#storybook-root".to_string()),
-                            delay: Some(100),
-                        })
-                        .collect();
+                    let shots = stories_to_shots(stories_map.into_values().map(|story| story.id));
 
                     if !shots.is_empty() {
                         return Some(shots);
@@ -227,6 +217,47 @@ pub async fn fetch_storybook_stories(base_url: &str) -> Option<Vec<Shot>> {
     }
 
     None
+}
+
+/// Turns Storybook story ids into shots, sorted by name.
+///
+/// Story ids come from a server response, so each one is validated like a
+/// hand-written shot name and percent-encoded in the URL; ids that would be
+/// unsafe as file names are skipped with a warning.
+fn stories_to_shots(ids: impl Iterator<Item = String>) -> Vec<Shot> {
+    let mut shots: Vec<Shot> = ids
+        .filter_map(|id| {
+            let shot = Shot {
+                path: format!("/iframe.html?id={}&viewMode=story", encode_query_value(&id)),
+                name: id,
+                wait_for: Some("#storybook-root".to_string()),
+                delay: Some(100),
+            };
+            match validate_shot(&shot) {
+                Ok(()) => Some(shot),
+                Err(error) => {
+                    warn!("⚠️  Skipping story {:?}: {:#}", shot.name, error);
+                    None
+                }
+            }
+        })
+        .collect();
+    shots.sort_by(|a, b| a.name.cmp(&b.name));
+    shots.dedup_by(|a, b| a.name == b.name);
+    shots
+}
+
+/// Percent-encodes a query string value.
+fn encode_query_value(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{:02X}", byte));
+        }
+    }
+    encoded
 }
 
 /// Detects a generic dev server by probing common ports.
@@ -308,6 +339,23 @@ mod tests {
 
         let unknown = ProjectType::Unknown;
         assert_eq!(unknown.source_name(), "manual");
+    }
+
+    #[test]
+    fn stories_to_shots_skips_unsafe_ids_and_encodes_urls() {
+        let shots = stories_to_shots(
+            vec![
+                "button--primary".to_string(),
+                "../../../etc/evil".to_string(),
+                "card--a b".to_string(),
+                "button--primary".to_string(),
+            ]
+            .into_iter(),
+        );
+
+        let names: Vec<&str> = shots.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["button--primary", "card--a b"]);
+        assert_eq!(shots[1].path, "/iframe.html?id=card--a%20b&viewMode=story");
     }
 
     #[tokio::test]

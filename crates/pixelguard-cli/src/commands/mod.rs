@@ -16,11 +16,13 @@ use anyhow::Result;
 use pixelguard_core::Config;
 
 pub mod apply;
+pub mod decisions;
 pub mod init;
 pub mod list;
 pub mod plugins;
 pub mod review;
 pub mod serve;
+pub mod server;
 pub mod test;
 pub mod validate;
 

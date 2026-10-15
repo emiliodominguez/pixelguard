@@ -73,7 +73,17 @@ pub fn load_plugin(
 
     let entry_path = package_path.join(&entry_file);
 
-    if !entry_path.exists() {
+    if entry_path.exists() {
+        let package_root = package_path.canonicalize()?;
+        let resolved_entry = entry_path.canonicalize()?;
+        if !resolved_entry.starts_with(&package_root) {
+            anyhow::bail!(
+                "❌ Plugin '{}' entry point '{}' resolves outside its package directory.",
+                package.name,
+                entry_file
+            );
+        }
+    } else {
         anyhow::bail!(
             "❌ Plugin '{}' entry point '{}' not found at '{}'.\n\n\
              💡 Solutions:\n  \

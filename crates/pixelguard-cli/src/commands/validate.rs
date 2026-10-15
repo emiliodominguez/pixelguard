@@ -13,7 +13,7 @@ use clap::Args;
 #[derive(Args)]
 pub struct ValidateArgs {
     /// Path to config file (default: pixelguard.config.json)
-    #[arg(long, short)]
+    #[arg(long, short, env = "PIXELGUARD_CONFIG")]
     config: Option<String>,
 
     /// Output in JSON format
@@ -76,7 +76,7 @@ pub async fn run(args: ValidateArgs) -> Result<()> {
     checks.push(check_node());
 
     // Check 3: Playwright
-    checks.push(check_playwright());
+    checks.push(check_playwright(&working_dir));
 
     // Check 4: Base URL (if config loaded and not skipped)
     if !args.skip_url_check {
@@ -139,33 +139,26 @@ fn check_node() -> CheckResult {
 }
 
 /// Checks if Playwright is installed.
-fn check_playwright() -> CheckResult {
-    // Try to check if playwright is installed via npx
-    match Command::new("npx")
-        .args(["playwright", "--version"])
+fn check_playwright(working_dir: &std::path::Path) -> CheckResult {
+    // Resolve Playwright exactly like the capture driver does. Unlike
+    // `npx playwright`, this never downloads anything from the registry.
+    match Command::new("node")
+        .arg("-e")
+        .arg(super::test::PLAYWRIGHT_PROBE)
+        .arg(working_dir)
         .output()
     {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let version = version.lines().next().unwrap_or(&version);
             CheckResult::pass(
                 "playwright",
                 format!("✅ Playwright {} is available", version),
             )
         }
-        _ => {
-            // Try checking if @playwright/test is in node_modules
-            if std::path::Path::new("node_modules/@playwright/test").exists()
-                || std::path::Path::new("node_modules/playwright").exists()
-            {
-                CheckResult::pass("playwright", "✅ Playwright is installed in node_modules")
-            } else {
-                CheckResult::fail(
-                    "playwright",
-                    "❌ Playwright not found.\n\n💡 Installation:\n  1️⃣ npm install -D @playwright/test\n  2️⃣ npx playwright install chromium\n\n📝 Only Chromium is needed for screenshots.",
-                )
-            }
-        }
+        _ => CheckResult::fail(
+            "playwright",
+            "❌ Playwright not found.\n\n💡 Installation:\n  1️⃣ npm install -D playwright\n  2️⃣ npx playwright install chromium\n\n📝 Only Chromium is needed for screenshots.",
+        ),
     }
 }
 

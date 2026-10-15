@@ -10,7 +10,7 @@ use clap::Args;
 #[derive(Args)]
 pub struct ListArgs {
     /// Path to config file (default: pixelguard.config.json)
-    #[arg(long, short)]
+    #[arg(long, short, env = "PIXELGUARD_CONFIG")]
     config: Option<String>,
 
     /// Output in JSON format
@@ -23,7 +23,13 @@ pub async fn run(args: ListArgs) -> Result<()> {
     let working_dir = std::env::current_dir()?;
 
     // Load config from custom path or default
-    let config = super::load_config(&working_dir, args.config.as_deref())?;
+    let mut config = super::load_config(&working_dir, args.config.as_deref())?;
+
+    // Storybook shots are discovered at test time; list what a test run would capture.
+    if config.source == "storybook" && !config.base_url.is_empty() {
+        let discovered = super::test::discover_shots(&config).await?;
+        config.shots = super::test::merge_shots(discovered, &config.shots);
+    }
 
     if config.shots.is_empty() {
         if args.json {

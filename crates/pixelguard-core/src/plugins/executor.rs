@@ -1,16 +1,18 @@
 //! Plugin execution via Node.js subprocess.
 //!
-//! This module handles the IPC between Rust and Node.js plugins,
-//! following the established pattern from capture.rs.
+//! This module handles the IPC between Rust and Node.js plugins. A static
+//! runner script receives its input through a JSON file and writes the hook's
+//! result to another file, so plugin logging never interferes with the protocol.
 
 use std::path::Path;
-use std::process::Command;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::debug;
 
 use super::types::{LoadedPlugin, PluginResult};
+use crate::process;
 
 /// Checks the plugin result for errors and returns a formatted error message.
 fn check_plugin_error(result: &PluginResult, plugin_name: &str, hook_name: &str) -> Result<()> {
@@ -68,8 +70,7 @@ where
     I: Serialize,
     O: DeserializeOwned,
 {
-    let script = generate_hook_script(plugin, hook_name, input)?;
-    let result = run_node_script(&script, working_dir)?;
+    let result = run_hook(plugin, hook_name, input, working_dir)?;
     check_plugin_error(&result, plugin.name(), hook_name)?;
 
     let data = result.data.unwrap_or(serde_json::Value::Null);
@@ -95,128 +96,134 @@ pub fn execute_hook_void<I>(
 where
     I: Serialize,
 {
-    let script = generate_hook_script(plugin, hook_name, input)?;
-    let result = run_node_script(&script, working_dir)?;
+    let result = run_hook(plugin, hook_name, input, working_dir)?;
     check_plugin_error(&result, plugin.name(), hook_name)?;
 
     Ok(())
 }
 
-/// Generates a Node.js script to execute a plugin hook.
-fn generate_hook_script<I: Serialize>(
+/// Static hook runner. The entry path, hook name, input and options arrive as
+/// data, and the result goes to a dedicated file, so a plugin that logs to
+/// stdout cannot corrupt the protocol.
+const HOOK_RUNNER_SCRIPT: &str = r#"
+const fs = require('fs');
+const { pathToFileURL } = require('url');
+const [entryPath, inputPath, outputPath] = process.argv.slice(2);
+
+function writeResult(result) {
+    fs.writeFileSync(outputPath, JSON.stringify(result));
+}
+
+async function loadPlugin() {
+    try {
+        return require(entryPath);
+    } catch (error) {
+        if (error.code !== 'ERR_REQUIRE_ESM' && error.code !== 'ERR_REQUIRE_ASYNC_MODULE') throw error;
+        const mod = await import(pathToFileURL(entryPath).href);
+        return mod.default || mod;
+    }
+}
+
+async function run() {
+    try {
+        const { hook, input, options } = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
+        const plugin = await loadPlugin();
+
+        if (input !== null && typeof input === 'object' && !Array.isArray(input)) {
+            input.options = { ...options, ...(input.options || {}) };
+        }
+
+        if (!plugin || !Object.prototype.hasOwnProperty.call(plugin, hook) || typeof plugin[hook] !== 'function') {
+            throw new Error(`Hook "${hook}" is not implemented by this plugin`);
+        }
+
+        const result = await plugin[hook](input);
+        writeResult({ success: true, data: result === undefined ? null : result });
+    } catch (error) {
+        writeResult({ success: false, error: (error && error.message) || String(error) });
+        process.exitCode = 1;
+    }
+}
+
+run();
+"#;
+
+/// Default wall-clock limit for a single plugin hook.
+const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Runs `hook_name` of `plugin` with `input` and returns the raw plugin result.
+fn run_hook<I: Serialize>(
     plugin: &LoadedPlugin,
     hook_name: &str,
     input: &I,
-) -> Result<String> {
-    let entry_path = plugin
-        .entry_path
-        .to_str()
-        .context("Plugin entry path is not valid UTF-8")?
-        .replace('\\', "/");
+    working_dir: &Path,
+) -> Result<PluginResult> {
+    if hook_name.is_empty()
+        || !hook_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        anyhow::bail!("Invalid plugin hook name '{}'", hook_name);
+    }
 
-    let input_json = serde_json::to_string(input)?;
-    let options_json = serde_json::to_string(&plugin.options)?;
-
-    Ok(format!(
-        r#"
-const plugin = require({entry_path});
-
-async function run() {{
-    try {{
-        const input = {input_json};
-        const options = {options_json};
-
-        // Merge options into input if not already present
-        if (typeof input === 'object' && input !== null && !Array.isArray(input)) {{
-            input.options = {{ ...options, ...input.options }};
-        }}
-
-        // Check if hook exists
-        if (typeof plugin.{hook_name} !== 'function') {{
-            throw new Error('Hook "{hook_name}" is not implemented by this plugin');
-        }}
-
-        const result = await plugin.{hook_name}(input);
-
-        console.log(JSON.stringify({{
-            success: true,
-            data: result !== undefined ? result : null
-        }}));
-    }} catch (error) {{
-        console.log(JSON.stringify({{
-            success: false,
-            error: error.message || String(error)
-        }}));
-        process.exit(1);
-    }}
-}}
-
-run();
-"#,
-        entry_path = serde_json::to_string(&entry_path)?,
-        input_json = input_json,
-        options_json = options_json,
-        hook_name = hook_name,
-    ))
-}
-
-/// Runs a Node.js script and parses the result.
-fn run_node_script(script: &str, working_dir: &Path) -> Result<PluginResult> {
     let temp_dir = tempfile::tempdir()?;
     let script_path = temp_dir.path().join("plugin-hook.js");
-    std::fs::write(&script_path, script)?;
+    let input_path = temp_dir.path().join("input.json");
+    let output_path = temp_dir.path().join("output.json");
+
+    std::fs::write(&script_path, HOOK_RUNNER_SCRIPT)?;
+    std::fs::write(
+        &input_path,
+        serde_json::to_vec(&serde_json::json!({
+            "hook": hook_name,
+            "input": input,
+            "options": plugin.options,
+        }))?,
+    )?;
+
+    let entry_path = std::path::absolute(&plugin.entry_path)?;
 
     debug!("🔌 Executing plugin script at {:?}", script_path);
 
-    let output = Command::new("node")
-        .arg(&script_path)
-        .current_dir(working_dir)
-        .output()
-        .context("Failed to execute Node.js. Make sure Node.js is installed.")?;
+    let output = process::run_node_script(
+        &script_path,
+        &[
+            entry_path.as_os_str(),
+            input_path.as_os_str(),
+            output_path.as_os_str(),
+        ],
+        working_dir,
+        process::timeout_from_env(DEFAULT_HOOK_TIMEOUT),
+    )
+    .with_context(|| {
+        format!(
+            "Plugin '{}' hook '{}' did not complete",
+            plugin.name(),
+            hook_name
+        )
+    })?;
 
+    // Plugins use stdout and stderr for human-readable output; pass both through.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.is_empty() {
+        eprint!("{}", stdout);
+    }
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.is_empty() {
-        // Print stderr directly to user's terminal (plugins use this for output)
         eprint!("{}", stderr);
     }
 
-    // Try to parse stdout as JSON first
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let trimmed = stdout.trim();
-
-    if trimmed.is_empty() {
-        // No output - check if process failed
-        if !output.status.success() {
-            return Ok(PluginResult::err(format!(
-                "Plugin process exited with code {:?}. Stderr: {}",
-                output.status.code(),
-                stderr
-            )));
-        }
-        // Success with no output
-        return Ok(PluginResult::ok_empty());
-    }
-
-    // Try to parse as PluginResult JSON
-    match serde_json::from_str::<PluginResult>(trimmed) {
-        Ok(result) => Ok(result),
-        Err(parse_error) => {
-            // If parsing fails and process also failed, return the error
-            if !output.status.success() {
-                Ok(PluginResult::err(format!(
-                    "Plugin failed (exit code {:?}). Output: {}. Stderr: {}",
-                    output.status.code(),
-                    trimmed,
-                    stderr
-                )))
-            } else {
-                // Process succeeded but output wasn't valid JSON
-                Ok(PluginResult::err(format!(
-                    "Failed to parse plugin output as JSON: {}. Output was: {}",
-                    parse_error, trimmed
-                )))
-            }
-        }
+    match std::fs::read(&output_path) {
+        Ok(bytes) => Ok(
+            serde_json::from_slice::<PluginResult>(&bytes).unwrap_or_else(|parse_error| {
+                PluginResult::err(format!("Failed to parse plugin result: {}", parse_error))
+            }),
+        ),
+        Err(_) => Ok(PluginResult::err(format!(
+            "Plugin exited with code {:?} without producing a result. Stderr: {}",
+            output.status.code(),
+            stderr.trim()
+        ))),
     }
 }
 
@@ -350,5 +357,76 @@ mod tests {
         let result = execute_hook_void(&plugin, "testHook", &input, dir.path());
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn execute_hook_tolerates_plugins_that_log_to_stdout() {
+        let dir = tempdir().unwrap();
+        let plugin = create_mock_plugin(
+            dir.path(),
+            r#"
+            module.exports = {
+                testHook: async () => {
+                    console.log('chatty plugin output');
+                    return { ok: true };
+                }
+            };
+            "#,
+        );
+
+        let output: serde_json::Value =
+            execute_hook(&plugin, "testHook", &serde_json::json!({}), dir.path()).unwrap();
+
+        assert_eq!(output["ok"], true);
+    }
+
+    #[test]
+    fn execute_hook_treats_input_as_data_not_code() {
+        let dir = tempdir().unwrap();
+        let marker = dir.path().join("pwned");
+        let plugin = create_mock_plugin(
+            dir.path(),
+            "module.exports = { testHook: async (input) => ({ echoed: input.value }) };",
+        );
+        let payload = format!(
+            "\"}};require('fs').writeFileSync({:?},'x');//",
+            marker.to_string_lossy()
+        );
+
+        let output: serde_json::Value = execute_hook(
+            &plugin,
+            "testHook",
+            &serde_json::json!({ "value": payload }),
+            dir.path(),
+        )
+        .unwrap();
+
+        assert_eq!(output["echoed"], payload);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn execute_hook_rejects_inherited_properties_as_hooks() {
+        let dir = tempdir().unwrap();
+        let plugin = create_mock_plugin(dir.path(), "module.exports = {};");
+
+        let result: Result<serde_json::Value> =
+            execute_hook(&plugin, "constructor", &serde_json::json!({}), dir.path());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_hook_reports_plugins_that_exit_without_a_result() {
+        let dir = tempdir().unwrap();
+        let plugin = create_mock_plugin(
+            dir.path(),
+            "module.exports = { testHook: async () => { process.exit(0); } };",
+        );
+
+        let result: Result<serde_json::Value> =
+            execute_hook(&plugin, "testHook", &serde_json::json!({}), dir.path());
+
+        assert!(result.is_err());
     }
 }

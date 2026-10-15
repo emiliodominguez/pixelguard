@@ -21,7 +21,7 @@ tokio = { version = "1.52", features = ["full"] }
 image = "0.25"
 
 # CLI
-clap = { version = "4.6", features = ["derive"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 
 # HTTP client
 reqwest = { version = "0.13", features = ["json"] }
@@ -44,6 +44,9 @@ open = "5.3"
 
 # Regex
 regex = "1.12"
+
+# Hashing (binds review decisions to the exact image reviewed)
+sha2 = "0.10"
 
 # Base64 encoding
 base64 = "0.22"
