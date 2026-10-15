@@ -11,7 +11,7 @@
 		"format:rust": "cargo fmt",
 		"test": "cargo test",
 		"build": "cargo build --release",
-		"publish:cli": "./scripts/publish.sh",
+		"release": "./scripts/release.sh",
 		"changeset": "changeset",
 		"version": "changeset version"
 	},
