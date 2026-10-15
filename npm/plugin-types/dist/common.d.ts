@@ -32,6 +32,8 @@ export interface DiffResult {
     added: string[];
     /** Names of removed shots (baseline exists, no current) */
     removed: string[];
+    /** Names of shots that could not be captured or compared; any entry means the run failed */
+    failed: string[];
 }
 /**
  * A shot that changed between baseline and current.

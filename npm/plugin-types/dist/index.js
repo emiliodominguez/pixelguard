@@ -1,12 +1,12 @@
 "use strict";
 /**
- * @pixelguard/plugin-types
+ * pixelguard-plugin-types
  *
  * TypeScript type definitions for creating Pixelguard plugins.
  *
  * @example
  * ```typescript
- * import type { StoragePlugin, NotifierPlugin } from '@pixelguard/plugin-types';
+ * import type { StoragePlugin, NotifierPlugin } from 'pixelguard-plugin-types';
  *
  * export const read: StoragePlugin['read'] = async ({ path, options }) => {
  *   // Implement storage read

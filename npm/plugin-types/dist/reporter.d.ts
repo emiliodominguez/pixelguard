@@ -35,7 +35,7 @@ export interface ReporterOutput {
  *
  * @example
  * ```typescript
- * import type { ReporterPlugin, ReporterInput, ReporterOutput } from '@pixelguard/plugin-types';
+ * import type { ReporterPlugin, ReporterInput, ReporterOutput } from 'pixelguard-plugin-types';
  * import * as fs from 'fs';
  * import * as path from 'path';
  *

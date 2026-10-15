@@ -34,7 +34,7 @@ export interface NotifierInput {
  *
  * @example
  * ```typescript
- * import type { NotifierPlugin, NotifierInput } from '@pixelguard/plugin-types';
+ * import type { NotifierPlugin, NotifierInput } from 'pixelguard-plugin-types';
  *
  * // Slack notifier
  * export const notify: NotifierPlugin['notify'] = async (input: NotifierInput): Promise<void> => {

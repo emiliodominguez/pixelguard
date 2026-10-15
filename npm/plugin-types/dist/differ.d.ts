@@ -36,7 +36,7 @@ export interface DifferOutput {
  *
  * @example
  * ```typescript
- * import type { DifferPlugin, DifferInput, DifferOutput } from '@pixelguard/plugin-types';
+ * import type { DifferPlugin, DifferInput, DifferOutput } from 'pixelguard-plugin-types';
  * import { ssim } from 'ssim.js';
  * import sharp from 'sharp';
  *

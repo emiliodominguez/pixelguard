@@ -28,6 +28,13 @@ export interface CaptureViewport {
     height: number;
 }
 /**
+ * A named viewport.
+ */
+export interface CaptureNamedViewport extends CaptureViewport {
+    /** Viewport name; `default` when the config has no `viewports` list */
+    name: string;
+}
+/**
  * Input for capture operation.
  */
 export interface CaptureInput {
@@ -35,9 +42,15 @@ export interface CaptureInput {
     shots: CaptureShot[];
     /** Base URL of the dev server */
     baseUrl: string;
-    /** Viewport dimensions */
+    /** Viewport dimensions (legacy single viewport) */
     viewport: CaptureViewport;
-    /** Output directory for screenshots */
+    /**
+     * Every viewport to capture. Save each shot as `${name}.png` for the `default`
+     * viewport and `${name}@${viewport.name}.png` otherwise. Pixelguard only trusts
+     * files that exist in `outputDir` under these names.
+     */
+    viewports: CaptureNamedViewport[];
+    /** Output directory for screenshots (emptied of stale PNGs before capture) */
     outputDir: string;
     /** Plugin options from config */
     options: Record<string, unknown>;
@@ -76,7 +89,7 @@ export interface CaptureOutput {
  *
  * @example
  * ```typescript
- * import type { CapturePlugin, CaptureInput, CaptureOutput } from '@pixelguard/plugin-types';
+ * import type { CapturePlugin, CaptureInput, CaptureOutput } from 'pixelguard-plugin-types';
  * import puppeteer from 'puppeteer';
  *
  * export const capture: CapturePlugin['capture'] = async (input: CaptureInput): Promise<CaptureOutput> => {

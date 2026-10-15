@@ -59,7 +59,7 @@ export interface StorageDeleteInput {
  *
  * @example
  * ```typescript
- * import type { StoragePlugin } from '@pixelguard/plugin-types';
+ * import type { StoragePlugin } from 'pixelguard-plugin-types';
  * import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
  *
  * const client = new S3Client({ region: 'us-east-1' });
