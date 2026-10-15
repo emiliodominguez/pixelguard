@@ -16,12 +16,12 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/emiliodominguez/pixelguard.git"
+		"url": "git+https://github.com/emiliodominguez/pixelguard.git"
 	},
 	"license": "MIT",
 	"author": "Pixelguard Contributors",
 	"bin": {
-		"pixelguard": "./scripts/run.js"
+		"pixelguard": "scripts/run.js"
 	},
 	"files": [
 		"scripts/",
