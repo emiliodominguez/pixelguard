@@ -40,7 +40,7 @@ docker run --rm \
     -w /src \
     "$RUST_LINUX_IMAGE" bash -euo pipefail -c '
         apt-get update -qq
-        apt-get install -y -qq cmake gcc-x86-64-linux-gnu gcc-aarch64-linux-gnu g++-x86-64-linux-gnu g++-aarch64-linux-gnu >/dev/null
+        apt-get install -y -qq gcc-x86-64-linux-gnu gcc-aarch64-linux-gnu g++-x86-64-linux-gnu g++-aarch64-linux-gnu >/dev/null
         export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
         export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++
