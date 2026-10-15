@@ -36,8 +36,11 @@ async function notify(input) {
 		throw new Error("Slack webhook URL is required. Set it in pluginOptions.pixelguard-plugin-slack-notifier.webhookUrl");
 	}
 
-	// Check if we should notify
-	const hasChanges = result.changed.length > 0 || result.added.length > 0 || result.removed.length > 0;
+	// Older Pixelguard versions do not send `failed`
+	const failed = result.failed || [];
+
+	// Check if we should notify; failed captures always count as a failure
+	const hasChanges = result.changed.length > 0 || result.added.length > 0 || result.removed.length > 0 || failed.length > 0;
 
 	if (options.onlyOnFailure && !hasChanges) {
 		console.error("Slack notification skipped (no changes and onlyOnFailure=true)");
@@ -45,9 +48,14 @@ async function notify(input) {
 	}
 
 	// Build Slack message
-	const status = hasChanges ? ":warning: Visual changes detected" : ":white_check_mark: All visual tests passed";
+	const status =
+		failed.length > 0
+			? `:x: ${failed.length} screenshot(s) could not be captured or compared`
+			: hasChanges
+				? ":warning: Visual changes detected"
+				: ":white_check_mark: All visual tests passed";
 
-	const total = result.unchanged.length + result.changed.length + result.added.length + result.removed.length;
+	const total = result.unchanged.length + result.changed.length + result.added.length + result.removed.length + failed.length;
 
 	const blocks = [
 		{

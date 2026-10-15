@@ -32,10 +32,13 @@ async function notify(input) {
 	const showDetails = options.showDetails !== false;
 	const useEmoji = options.useEmoji !== false;
 
-	// Calculate totals
-	const total = result.unchanged.length + result.changed.length + result.added.length + result.removed.length;
+	// Older Pixelguard versions do not send `failed`
+	const failed = result.failed || [];
 
-	const hasChanges = result.changed.length > 0 || result.added.length > 0 || result.removed.length > 0;
+	// Calculate totals
+	const total = result.unchanged.length + result.changed.length + result.added.length + result.removed.length + failed.length;
+
+	const hasChanges = result.changed.length > 0 || result.added.length > 0 || result.removed.length > 0 || failed.length > 0;
 
 	// Build the output
 	const lines = [];
@@ -48,7 +51,9 @@ async function notify(input) {
 	lines.push("");
 
 	// Status
-	if (hasChanges) {
+	if (failed.length > 0) {
+		lines.push("  Status: FAILED (some shots could not be captured or compared)");
+	} else if (hasChanges) {
 		lines.push(useEmoji ? "  Status: CHANGES DETECTED" : "  Status: CHANGES DETECTED");
 	} else {
 		lines.push(useEmoji ? "  Status: ALL TESTS PASSED" : "  Status: PASSED");
@@ -62,6 +67,7 @@ async function notify(input) {
 	lines.push(`    Changed:      ${result.changed.length} ${useEmoji && result.changed.length > 0 ? "" : ""}`);
 	lines.push(`    Added:        ${result.added.length} ${useEmoji && result.added.length > 0 ? "" : ""}`);
 	lines.push(`    Removed:      ${result.removed.length} ${useEmoji && result.removed.length > 0 ? "" : ""}`);
+	lines.push(`    Failed:       ${failed.length}`);
 	lines.push("");
 
 	// Details (if enabled and there are changes)
@@ -78,6 +84,14 @@ async function notify(input) {
 			lines.push("  Added shots (no baseline):");
 			for (const name of result.added) {
 				lines.push(`    + ${name}`);
+			}
+			lines.push("");
+		}
+
+		if (failed.length > 0) {
+			lines.push("  Failed shots:");
+			for (const name of failed) {
+				lines.push(`    ! ${name}`);
 			}
 			lines.push("");
 		}

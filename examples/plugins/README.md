@@ -36,7 +36,7 @@ npm run pixelguard:test:plugins
 ```
 
 This uses `pixelguard.plugins.config.json` which loads:
-- **JSON Reporter**: Outputs `results.json` in the output directory
+- **JSON Reporter**: Outputs `report.json` in the output directory (avoid `results.json`, which Pixelguard itself writes)
 - **Console Notifier**: Prints a formatted summary to the terminal
 
 ## Using Local Plugins
@@ -51,7 +51,7 @@ You can reference local plugins by path in your config:
   ],
   "pluginOptions": {
     "../plugins/pixelguard-plugin-json-reporter": {
-      "filename": "results.json",
+      "filename": "report.json",
       "pretty": true
     }
   }
@@ -139,10 +139,10 @@ module.exports = { notify };
 
 ## TypeScript Support
 
-For TypeScript plugins, use the `@pixelguard/plugin-types` package:
+For TypeScript plugins, use the `pixelguard-plugin-types` package:
 
 ```typescript
-import type { NotifierPlugin, NotifierInput } from '@pixelguard/plugin-types';
+import type { NotifierPlugin, NotifierInput } from 'pixelguard-plugin-types';
 
 export const notify: NotifierPlugin['notify'] = async (input: NotifierInput) => {
   // TypeScript knows the shape of input

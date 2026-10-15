@@ -12,7 +12,7 @@
 	"plugins": ["../plugins/pixelguard-plugin-json-reporter", "../plugins/pixelguard-plugin-console-notifier"],
 	"pluginOptions": {
 		"../plugins/pixelguard-plugin-json-reporter": {
-			"filename": "results.json",
+			"filename": "plugin-report.json",
 			"pretty": true
 		},
 		"../plugins/pixelguard-plugin-console-notifier": {
