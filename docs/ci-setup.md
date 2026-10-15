@@ -267,9 +267,17 @@ When using `--ci` flag, Pixelguard outputs JSON for machine parsing:
 }
 ```
 
+The JSON also includes `"failed"`: the number of shots that could not be captured or compared.
+
 Exit codes:
-- `0` - All tests passed (no visual differences)
-- `1` - Visual differences detected
+- `0` - Every expected shot was captured, compared and unchanged
+- `1` - Visual differences, failed captures or comparisons, a missing baseline, or a failing reporter/notifier plugin
+
+Reporter and notifier plugins always run before the exit code is set, so failing runs still produce reports and notifications.
+
+Only screenshots captured in the current run are compared. A shot that fails to capture fails the run instead of being compared against a leftover image, and a missing baseline directory fails CI instead of passing silently.
+
+If your baselines are stored with Git LFS, check them out with LFS enabled (`actions/checkout` with `lfs: true`). Pixelguard reports LFS pointer files as failures with a hint to run `git lfs pull`.
 
 ## Best Practices
 

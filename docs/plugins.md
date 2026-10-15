@@ -117,7 +117,7 @@ You can also specify options inline:
 
 | Hook | Input | Output | Description |
 |------|-------|--------|-------------|
-| `capture` | `{ shots, baseUrl, viewport, outputDir, options }` | `{ captured, failed }` | Take screenshots |
+| `capture` | `{ shots, baseUrl, viewport, viewports, outputDir, options }` | `{ captured, failed }` | Take screenshots |
 
 ### Differ Hook
 
@@ -199,7 +199,7 @@ Reference your plugin by path in the config:
 Install the type definitions:
 
 ```bash
-npm install -D @pixelguard/plugin-types
+npm install -D pixelguard-plugin-types
 ```
 
 Use them in your plugin:
@@ -208,7 +208,7 @@ Use them in your plugin:
 import type {
   NotifierPlugin,
   NotifierInput
-} from '@pixelguard/plugin-types';
+} from 'pixelguard-plugin-types';
 
 export const notify: NotifierPlugin['notify'] = async (input: NotifierInput) => {
   const { result, reportPath, ciMode, options } = input;
@@ -246,14 +246,10 @@ async function notify(input) {
 
 ### Output
 
-Use `console.error()` for user-facing output (stdout is reserved for the plugin protocol):
+Both `console.log()` and `console.error()` are safe: hook results travel through a separate channel, and all plugin output is shown to the user on stderr.
 
 ```javascript
-// Good - user will see this
 console.error('Notification sent successfully');
-
-// Bad - interferes with plugin protocol
-console.log('Notification sent');
 ```
 
 ### Options Validation

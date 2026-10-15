@@ -1,6 +1,6 @@
 ---
 "pixelguard": minor
-"@pixelguard/plugin-types": minor
+"pixelguard-plugin-types": minor
 ---
 
 Initial release of Pixelguard v0.1.0

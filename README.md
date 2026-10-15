@@ -77,6 +77,9 @@ Options:
 - `--verbose` — Show detailed progress
 - `--serve` — Serve the HTML report in browser after completion
 - `--port <number>` — Port for serving the report (default: 3333)
+- `--no-open` — With `--serve`, don't open a browser
+
+A shot that fails to capture fails the run (exit code 1 with `--ci`); it is never compared against a screenshot left over from an earlier run. A full `--update` with no failures also removes baselines for shots that no longer exist.
 
 #### Selective Updates
 
@@ -166,6 +169,9 @@ npx pixelguard apply path/to/decisions.json
 Options:
 - `--config, -c <path>` — Use a custom config file
 - `--dry-run` — Show what would be updated without making changes
+- `--allow-unverified` — Also apply approvals that carry no image hash (made by older reports)
+
+Each approval records the SHA-256 of the screenshot you looked at. If the screenshot changed since (for example because tests ran again), `apply` skips it so nothing is promoted to the baseline unseen.
 
 ### `pixelguard review`
 
@@ -204,8 +210,19 @@ npx pixelguard serve
 Options:
 - `--config, -c <path>` — Use a custom config file
 - `--port <number>` — Port for serving the report (default: 3333)
+- `--no-open` — Don't open a browser
+
+The server only listens on `127.0.0.1`, only answers requests addressed to `localhost`/`127.0.0.1` (blocking DNS-rebinding attacks), only accepts decision writes from the report's own origin, and forbids framing the report.
 
 When using `serve`, decisions are automatically saved to `.pixelguard/decisions.json` as you approve/reject changes in the browser.
+
+## Environment Variables
+
+| Variable                  | Purpose                                                         |
+| ------------------------- | --------------------------------------------------------------- |
+| `PIXELGUARD_CONFIG`       | Config file path, same as `--config`                            |
+| `PIXELGUARD_TIMEOUT_SECS` | Override the capture and plugin hook timeout                    |
+| `PIXELGUARD_BINARY`       | Binary used by the npm wrapper when the download isn't available |
 
 ## Configuration
 

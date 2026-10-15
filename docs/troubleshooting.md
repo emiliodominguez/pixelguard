@@ -31,13 +31,21 @@ node --version  # Should be v18.0.0 or higher
 
 ### Binary download fails
 
-If the prebuilt binary fails to download, you can build from source:
+The npm package downloads the binary for your platform and verifies it against SHA-256 checksums shipped in the package. The binary is not installed if the download fails, the checksum does not match, or your platform has no published binary. In that case, build from source and point the wrapper at it:
 
 ```bash
 git clone https://github.com/emiliodominguez/pixelguard.git
 cd pixelguard
 cargo build --release
-# Binary will be at target/release/pixelguard
+export PIXELGUARD_BINARY=$PWD/target/release/pixelguard
+```
+
+### "Node.js script timed out"
+
+Capture runs and plugin hooks have a wall-clock timeout so a hung browser or plugin cannot stall CI forever. Capture gets a budget based on the number of shots, their delays and `concurrency`; plugin hooks get 10 minutes. Raise it with `PIXELGUARD_TIMEOUT_SECS`:
+
+```bash
+PIXELGUARD_TIMEOUT_SECS=1800 npx pixelguard test --ci
 ```
 
 ## Detection Issues
@@ -219,7 +227,7 @@ Ensure artifacts are uploaded on failure:
 
 ### Git LFS issues
 
-If baseline images aren't fetching:
+If a baseline shows up as failed with "is a Git LFS pointer, not a PNG", the baseline images weren't fetched:
 
 ```bash
 git lfs install

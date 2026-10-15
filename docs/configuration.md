@@ -113,6 +113,8 @@ Examples:
 
 Glob patterns for shots to exclude.
 
+Patterns are matched case-insensitively against story ids (for example `components-button--primary`). `*` matches any run of characters, `?` matches one character, and a leading `**/` is optional, so `**/*Deprecated*` matches `components-button--deprecated`. Every other character is literal.
+
 Examples:
 
 - `["**/*Deprecated*"]` - Exclude deprecated
@@ -143,6 +145,8 @@ The diff threshold as a percentage of pixels. Shots with differences below this 
 - `0.01` - 0.01% tolerance (default, catches small text changes)
 - `0.1` - 0.1% tolerance (lenient)
 - `1.0` - 1% tolerance (very lenient)
+
+Must be between `0` and `100`; anything else is rejected when the config is loaded.
 
 Lower values catch more subtle changes but may produce false positives from anti-aliasing.
 
@@ -207,6 +211,15 @@ You can override settings for specific shots by adding them to the `shots` array
 
 The shot name to override. Must match the discovered shot name exactly.
 
+Shot and viewport names become file names (`{shot}.png` or `{shot}@{viewport}.png`), so they must be unique, at most 200 bytes, must not start or end with `.` or whitespace, and must not contain `/ \ @ < > : " | ? * # %` or control characters. Discovered Storybook stories whose ids break these rules are skipped with a warning.
+
+### `path`
+
+**Type:** `string`
+**Required:** No for Storybook overrides, yes for manual shots
+
+URL path appended to `baseUrl`. Must start with `/` (and not `//`), e.g. `/about` or `/iframe.html?id=button--primary`.
+
 ### `waitFor`
 
 **Type:** `string`
@@ -219,13 +232,27 @@ CSS selector to wait for before capturing the screenshot. Useful for async conte
 **Type:** `number` (milliseconds)
 **Required:** No
 
-Additional delay after the page loads and `waitFor` selector is found.
+Additional delay after the page loads and `waitFor` selector is found. At most `300000` (5 minutes).
 
 Common values:
 
 - `100` - Quick delay for minor rendering
 - `500` - Medium delay for animations
 - `1000` - Long delay for complex pages
+
+## Validation Limits
+
+The config is validated when it is loaded, before anything runs:
+
+| Field              | Rule                                          |
+| ------------------ | --------------------------------------------- |
+| `baseUrl`          | `http://`, `https://` or `file://` URL         |
+| `threshold`        | `0` to `100`                                  |
+| `concurrency`      | `1` to `64`                                   |
+| `outputDir`        | Not empty                                     |
+| viewport sizes     | `1` to `16384` pixels                         |
+| `delay`            | At most `300000` ms                           |
+| shot/viewport name | Unique, file-name safe (see `name` above)     |
 
 ## Environment-Specific Configuration
 

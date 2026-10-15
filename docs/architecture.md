@@ -264,7 +264,7 @@ The plugin system enables extending Pixelguard:
 
 ### Plugin IPC Protocol
 
-Plugins communicate with Pixelguard via JSON over stdin/stdout:
+Plugins communicate with Pixelguard via JSON files, through a static runner script:
 
 ```
 ┌────────────────┐     JSON input      ┌────────────────┐
@@ -274,21 +274,24 @@ Plugins communicate with Pixelguard via JSON over stdin/stdout:
 └────────────────┘     JSON output     └────────────────┘
 ```
 
-1. Pixelguard spawns Node.js subprocess
-2. Sends JSON input via stdin
-3. Plugin processes and writes JSON to stdout
-4. Pixelguard parses response
+1. Pixelguard writes the hook name, input and options to a temporary JSON file
+2. It spawns Node.js with a fixed runner script, passing the plugin entry path and file paths as arguments (no value is ever spliced into JavaScript source)
+3. The runner loads the plugin, awaits `plugin[hook](input)` and writes the result to a second JSON file
+4. Pixelguard reads that file; stdout and stderr are only shown to the user, so plugin logging cannot corrupt the protocol
+5. The process is killed if it exceeds the timeout (`PIXELGUARD_TIMEOUT_SECS`, 10 minutes by default)
+
+The built-in Playwright capture works the same way: Rust computes every URL and file path and hands them to a static driver script as JSON.
 
 Example plugin execution:
 ```javascript
-// Input (stdin)
+// Input file
 {
   "hook": "notify",
   "input": { "result": {...}, "ciMode": true },
   "options": { "webhookUrl": "..." }
 }
 
-// Output (stdout)
+// Output file
 { "success": true }
 ```
 

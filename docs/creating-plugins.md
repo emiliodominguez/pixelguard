@@ -4,7 +4,7 @@ This guide walks you through creating a Pixelguard plugin from scratch. We'll bu
 
 ## Plugin Overview
 
-Pixelguard plugins are Node.js packages that communicate with Pixelguard via JSON over stdin/stdout. They can:
+A Pixelguard plugin is a Node.js package that exports async hook functions. Pixelguard loads the package in a short-lived Node.js process, calls the hook with a JSON-serializable input object, and reads back the value the hook returns. Plugins can:
 
 - **Notify** - Send notifications (Slack, Teams, email)
 - **Report** - Generate custom reports (JUnit XML, JSON)
@@ -22,73 +22,86 @@ cd pixelguard-plugin-slack-notifier
 npm init -y
 ```
 
-### 2. Create the Manifest
+### 2. Add the Manifest to package.json
 
-Create `pixelguard-plugin.json`:
+The manifest lives in the `pixelguard` field of your `package.json`:
 
 ```json
 {
-  "name": "pixelguard-plugin-slack-notifier",
-  "category": "notifier",
-  "entry": "index.js",
-  "hooks": ["notify"],
-  "version": "1.0.0"
+	"name": "pixelguard-plugin-slack-notifier",
+	"version": "1.0.0",
+	"main": "index.js",
+	"pixelguard": {
+		"name": "Slack Notifier",
+		"category": "notifier",
+		"entry": "index.js",
+		"hooks": ["notify"]
+	}
 }
 ```
 
-### 3. Create the Entry Point
+### 3. Export the Hook
 
 Create `index.js`:
 
 ```javascript
-const input = JSON.parse(process.argv[2]);
-const { hook, input: hookInput, options } = input;
+/**
+ * Sends a summary of the run to Slack.
+ *
+ * @param {import("pixelguard-plugin-types").NotifierInput} input - Hook input
+ */
+async function notify(input) {
+	const { result, options } = input;
+	if (!options.webhookUrl) {
+		throw new Error("Missing webhookUrl. Add it to pluginOptions in your config.");
+	}
 
-if (hook === 'notify') {
-  const { result, ciMode } = hookInput;
-  const { webhookUrl } = options;
-
-  // Build message
-  const message = buildSlackMessage(result);
-
-  // Send to Slack
-  fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(message)
-  }).then(() => {
-    console.log(JSON.stringify({ success: true }));
-  }).catch(err => {
-    console.log(JSON.stringify({ success: false, error: err.message }));
-  });
+	const response = await fetch(options.webhookUrl, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(buildSlackMessage(result)),
+	});
+	if (!response.ok) {
+		throw new Error(`Slack responded with HTTP ${response.status}`);
+	}
 }
 
+/**
+ * Builds the Slack message body.
+ *
+ * @param {import("pixelguard-plugin-types").DiffResult} result - Run result
+ * @returns {object} Slack Block Kit payload
+ */
 function buildSlackMessage(result) {
-  const { unchanged, changed, added, removed } = result;
-  const hasChanges = changed.length > 0 || added.length > 0 || removed.length > 0;
+	const { unchanged, changed, added, removed, failed = [] } = result;
+	const passed = changed.length + added.length + removed.length + failed.length === 0;
 
-  return {
-    blocks: [
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: hasChanges ? 'Visual Changes Detected' : 'Visual Tests Passed'
-        }
-      },
-      {
-        type: 'section',
-        fields: [
-          { type: 'mrkdwn', text: `*Unchanged:* ${unchanged.length}` },
-          { type: 'mrkdwn', text: `*Changed:* ${changed.length}` },
-          { type: 'mrkdwn', text: `*Added:* ${added.length}` },
-          { type: 'mrkdwn', text: `*Removed:* ${removed.length}` }
-        ]
-      }
-    ]
-  };
+	return {
+		blocks: [
+			{
+				type: "header",
+				text: { type: "plain_text", text: passed ? "Visual Tests Passed" : "Visual Tests Need Attention" },
+			},
+			{
+				type: "section",
+				fields: [
+					{ type: "mrkdwn", text: `*Unchanged:* ${unchanged.length}` },
+					{ type: "mrkdwn", text: `*Changed:* ${changed.length}` },
+					{ type: "mrkdwn", text: `*Added:* ${added.length}` },
+					{ type: "mrkdwn", text: `*Removed:* ${removed.length}` },
+					{ type: "mrkdwn", text: `*Failed:* ${failed.length}` },
+				],
+			},
+		],
+	};
 }
+
+module.exports = { notify };
 ```
+
+Throwing an error marks the hook as failed; returning normally marks it as successful. Whatever the hook returns is passed back to Pixelguard.
+
+ES modules work too: if `require()` cannot load your entry point, Pixelguard falls back to `import()` and uses the module's `default` export (or the module namespace).
 
 ### 4. Test Locally
 
@@ -101,14 +114,14 @@ Add to `pixelguard.config.json`:
 
 ```json
 {
-  "plugins": [
-    {
-      "name": "pixelguard-plugin-slack-notifier",
-      "options": {
-        "webhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-      }
-    }
-  ]
+	"plugins": [
+		{
+			"name": "pixelguard-plugin-slack-notifier",
+			"options": {
+				"webhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+			}
+		}
+	]
 }
 ```
 
@@ -120,377 +133,183 @@ npx pixelguard test
 
 ## Plugin Manifest
 
-The `pixelguard-plugin.json` manifest is required. It tells Pixelguard about your plugin.
+The `pixelguard` field in `package.json` tells Pixelguard about your plugin.
 
-```json
-{
-  "name": "pixelguard-plugin-example",
-  "category": "notifier",
-  "entry": "dist/index.js",
-  "hooks": ["notify"],
-  "version": "1.0.0",
-  "optionsSchema": {
-    "type": "object",
-    "properties": {
-      "webhookUrl": {
-        "type": "string",
-        "description": "Slack webhook URL"
-      }
-    },
-    "required": ["webhookUrl"]
-  }
-}
-```
+| Field           | Type     | Required | Description                                                                     |
+| --------------- | -------- | -------- | ------------------------------------------------------------------------------- |
+| `name`          | string   | Yes      | Human-readable plugin name                                                      |
+| `category`      | string   | Yes      | Plugin category (see below)                                                     |
+| `hooks`         | string[] | Yes      | Hooks this plugin implements                                                    |
+| `entry`         | string   | No       | Entry point relative to the package; defaults to `main`, then `index.js`        |
+| `version`       | string   | No       | Defaults to the package version                                                 |
+| `optionsSchema` | object   | No       | JSON Schema describing your options (informational)                             |
 
-### Fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Package name |
-| `category` | string | Yes | Plugin category (see below) |
-| `entry` | string | Yes | Path to entry point (relative to package) |
-| `hooks` | string[] | Yes | Hooks this plugin implements |
-| `version` | string | Yes | Plugin version |
-| `optionsSchema` | object | No | JSON Schema for validating options |
+The entry point must resolve to a file inside the package directory.
 
 ### Categories
 
-| Category | Hooks | Behavior |
-|----------|-------|----------|
-| `notifier` | `notify` | Stackable (all run) |
-| `reporter` | `generate` | Stackable (all run) |
-| `capture` | `capture` | Single-winner (last wins) |
-| `differ` | `diff` | Single-winner (last wins) |
-| `storage` | `read`, `write`, `exists`, `list`, `copy`, `delete` | Single-winner (last wins) |
+| Category   | Hooks                                       | Behavior                  |
+| ---------- | ------------------------------------------- | ------------------------- |
+| `notifier` | `notify`                                    | Stackable (all run)       |
+| `reporter` | `generate`                                  | Stackable (all run)       |
+| `capture`  | `capture`                                   | Single-winner (last wins) |
+| `differ`   | `compare`                                   | Single-winner (last wins) |
+| `storage`  | `read`, `write`, `exists`, `list`, `delete` | Single-winner (last wins) |
+
+### Options
+
+Every hook input carries an `options` object built from, in increasing priority:
+
+1. Inline `options` on the plugin entry in `plugins`
+2. `pluginOptions["<package name>"]`
+
+## Runtime Contract
+
+- Each hook call runs in a fresh Node.js process with the project directory as the working directory.
+- Hooks run with a 10 minute timeout by default. Set `PIXELGUARD_TIMEOUT_SECS` to change it.
+- `console.log` and `console.error` are both safe: the result travels through a separate channel, and all output is shown to the user on stderr.
+- Calling `process.exit()` before the hook resolves is reported as a failure, because no result was produced.
 
 ## Hook Interfaces
 
+Install the types package for editor support:
+
+```bash
+npm install -D pixelguard-plugin-types
+```
+
 ### Notifier: `notify`
 
-Called after test comparison completes.
+Called after comparison completes, in CI mode as well, including when the run fails.
 
-**Input:**
 ```typescript
 interface NotifierInput {
-  result: {
-    unchanged: string[];
-    changed: {
-      name: string;
-      baselinePath: string;
-      currentPath: string;
-      diffPath: string;
-      diffPercentage: number;
-    }[];
-    added: string[];
-    removed: string[];
-  };
-  reportPath: string | null;
-  reportUrl: string | null;
-  ciMode: boolean;
-  options: Record<string, unknown>;
+	result: DiffResult;
+	reportPath?: string;
+	reportUrl?: string;
+	ciMode: boolean;
+	options: Record<string, unknown>;
+}
+
+interface DiffResult {
+	unchanged: string[];
+	changed: { name: string; baselinePath: string; currentPath: string; diffPath: string; diffPercentage: number }[];
+	added: string[];
+	removed: string[];
+	/** Shots that could not be captured or compared. Any entry means the run failed. */
+	failed: string[];
 }
 ```
 
-**Output:**
-```typescript
-interface NotifierOutput {
-  success: boolean;
-  error?: string;
-}
-```
+Return value is ignored.
 
 ### Reporter: `generate`
 
-Called to generate custom reports.
-
-**Input:**
 ```typescript
 interface ReporterInput {
-  result: {
-    unchanged: string[];
-    changed: {
-      name: string;
-      baselinePath: string;
-      currentPath: string;
-      diffPath: string;
-      diffPercentage: number;
-    }[];
-    added: string[];
-    removed: string[];
-  };
-  config: {
-    source: string;
-    baseUrl: string;
-    threshold: number;
-  };
-  outputDir: string;
-  options: Record<string, unknown>;
+	result: DiffResult;
+	config: { source: string; baseUrl: string; threshold: number };
+	outputDir: string;
+	options: Record<string, unknown>;
 }
-```
 
-**Output:**
-```typescript
 interface ReporterOutput {
-  success: boolean;
-  outputPath?: string;
-  error?: string;
+	reportPath?: string;
+	reportUrl?: string;
 }
 ```
 
 ### Capture: `capture`
 
-Called to capture screenshots (replaces built-in capture).
+Replaces the built-in Playwright capture.
 
-**Input:**
 ```typescript
 interface CaptureInput {
-  shots: {
-    name: string;
-    path: string;
-    waitFor?: string;
-    delay?: number;
-  }[];
-  baseUrl: string;
-  viewport: {
-    width: number;
-    height: number;
-  };
-  outputDir: string;
-  options: Record<string, unknown>;
+	shots: { name: string; path: string; waitFor?: string; delay?: number }[];
+	baseUrl: string;
+	/** Legacy single viewport */
+	viewport: { width: number; height: number };
+	/** Every viewport to capture; `default` when the config has no `viewports` list */
+	viewports: { name: string; width: number; height: number }[];
+	outputDir: string;
+	options: Record<string, unknown>;
 }
-```
 
-**Output:**
-```typescript
 interface CaptureOutput {
-  captured: {
-    name: string;
-    path: string;
-  }[];
-  failed: {
-    name: string;
-    error: string;
-  }[];
+	captured: { name: string; path: string }[];
+	failed: { name: string; error: string }[];
 }
 ```
 
-### Differ: `diff`
+Write each screenshot to `outputDir` as `${shot.name}.png` for the `default` viewport and `${shot.name}@${viewport.name}.png` otherwise. Pixelguard empties `outputDir` of PNGs before calling you, and afterwards only trusts files that exist under those exact names: an expected screenshot that is missing is reported as failed, whatever `captured` says.
 
-Called to compare images (replaces built-in diff).
+### Differ: `compare`
 
-**Input:**
+Replaces the built-in pixel comparison.
+
 ```typescript
 interface DifferInput {
-  baseline: string;  // Path to baseline image
-  current: string;   // Path to current image
-  output: string;    // Path to write diff image
-  threshold: number;
-  options: Record<string, unknown>;
+	baselinePath: string;
+	currentPath: string;
+	/** Where to write a diff image, if you produce one */
+	diffPath: string;
+	/** Percentage of pixels (0-100) allowed to differ */
+	threshold: number;
+	options: Record<string, unknown>;
 }
-```
 
-**Output:**
-```typescript
 interface DifferOutput {
-  match: boolean;
-  diffPercentage: number;
-  error?: string;
+	/** Must be a finite number between 0 and 100 */
+	diffPercentage: number;
+	matches: boolean;
 }
 ```
 
-## TypeScript Support
+A `diffPercentage` that is not a finite number in `0..=100` is treated as a comparison failure, never as a pass.
 
-For TypeScript plugins, install the types package:
+### Storage: `read`, `write`, `exists`, `list`, `delete`
 
-```bash
-npm install -D @pixelguard/plugin-types
-```
-
-Use the types:
+Stores baselines remotely. Paths are relative to the output directory, e.g. `baseline/button--primary.png`.
 
 ```typescript
-import type {
-  NotifierInput,
-  NotifierOutput,
-  PluginInput
-} from '@pixelguard/plugin-types';
+interface StorageInput {
+	path: string;
+	/** Base64 file contents, for `write` */
+	data?: string;
+	options: Record<string, unknown>;
+}
 
-const input: PluginInput = JSON.parse(process.argv[2]);
-
-if (input.hook === 'notify') {
-  const hookInput = input.input as NotifierInput;
-  // Type-safe access to hookInput.result, etc.
+interface StorageOutput {
+	/** Base64 file contents, for `read` */
+	data?: string;
+	/** For `exists` */
+	exists?: boolean;
+	/** File names, for `list` */
+	files?: string[];
 }
 ```
 
-## Complete Example: JSON Reporter
-
-Let's build a complete JSON reporter plugin.
-
-### Package Structure
-
-```
-pixelguard-plugin-json-reporter/
-├── package.json
-├── pixelguard-plugin.json
-├── tsconfig.json
-└── src/
-    └── index.ts
-```
-
-### package.json
-
-```json
-{
-  "name": "pixelguard-plugin-json-reporter",
-  "version": "1.0.0",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "prepublishOnly": "npm run build"
-  },
-  "devDependencies": {
-    "@pixelguard/plugin-types": "^1.0.0",
-    "typescript": "^5.0.0"
-  }
-}
-```
-
-### pixelguard-plugin.json
-
-```json
-{
-  "name": "pixelguard-plugin-json-reporter",
-  "category": "reporter",
-  "entry": "dist/index.js",
-  "hooks": ["generate"],
-  "version": "1.0.0",
-  "optionsSchema": {
-    "type": "object",
-    "properties": {
-      "outputFile": {
-        "type": "string",
-        "default": "report.json",
-        "description": "Output file name"
-      },
-      "pretty": {
-        "type": "boolean",
-        "default": true,
-        "description": "Pretty-print JSON output"
-      }
-    }
-  }
-}
-```
-
-### src/index.ts
-
-```typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import type { PluginInput, ReporterInput, ReporterOutput } from '@pixelguard/plugin-types';
-
-const input: PluginInput = JSON.parse(process.argv[2]);
-
-if (input.hook === 'generate') {
-  const { input: hookInput, options } = input;
-  const reporterInput = hookInput as ReporterInput;
-
-  const outputFile = (options.outputFile as string) || 'report.json';
-  const pretty = options.pretty !== false;
-
-  const report = {
-    timestamp: new Date().toISOString(),
-    summary: {
-      total: getTotalCount(reporterInput.result),
-      unchanged: reporterInput.result.unchanged.length,
-      changed: reporterInput.result.changed.length,
-      added: reporterInput.result.added.length,
-      removed: reporterInput.result.removed.length,
-      passed: !hasChanges(reporterInput.result)
-    },
-    config: reporterInput.config,
-    results: reporterInput.result
-  };
-
-  const outputPath = path.join(reporterInput.outputDir, outputFile);
-  const json = pretty
-    ? JSON.stringify(report, null, 2)
-    : JSON.stringify(report);
-
-  fs.writeFileSync(outputPath, json);
-
-  const output: ReporterOutput = {
-    success: true,
-    outputPath
-  };
-
-  console.log(JSON.stringify(output));
-}
-
-function getTotalCount(result: ReporterInput['result']): number {
-  return (
-    result.unchanged.length +
-    result.changed.length +
-    result.added.length +
-    result.removed.length
-  );
-}
-
-function hasChanges(result: ReporterInput['result']): boolean {
-  return (
-    result.changed.length > 0 ||
-    result.added.length > 0 ||
-    result.removed.length > 0
-  );
-}
-```
-
-### Build and Test
-
-```bash
-# Build
-npm run build
-
-# Link for local testing
-cd ../your-project
-npm link ../pixelguard-plugin-json-reporter
-
-# Add to config
-# pixelguard.config.json:
-# { "plugins": ["pixelguard-plugin-json-reporter"] }
-
-# Run tests
-npx pixelguard test
-# Check .pixelguard/report.json
-```
+`list` and `delete` are used by `pixelguard test --update` to remove baselines of shots that no longer exist.
 
 ## Debugging Plugins
 
-### Enable Debug Logging
-
-Set `DEBUG=pixelguard:*` to see plugin execution details:
+Run Pixelguard with `--verbose` to see plugin execution details:
 
 ```bash
-DEBUG=pixelguard:* npx pixelguard test
+npx pixelguard --verbose test
 ```
 
-### Log to stderr
-
-Use `console.error()` for debug output (stdout is reserved for JSON responses):
-
-```javascript
-console.error('Debug: Processing', shots.length, 'shots');
-// ... do work ...
-console.log(JSON.stringify({ success: true })); // Response to stdout
-```
-
-### Test Plugin Directly
-
-Run your plugin directly with test input:
+To exercise a hook directly, call it from a small script:
 
 ```bash
-node dist/index.js '{"hook":"notify","input":{"result":{"unchanged":["a","b"],"changed":[],"added":[],"removed":[]},"ciMode":false},"options":{"webhookUrl":"test"}}'
+node -e '
+const plugin = require("./index.js");
+plugin.notify({
+	result: { unchanged: ["a"], changed: [], added: [], removed: [], failed: [] },
+	ciMode: false,
+	options: { webhookUrl: process.env.SLACK_WEBHOOK_URL },
+}).then(() => console.log("ok"), (error) => console.error(error));
+'
 ```
 
 ## Publishing Plugins
@@ -503,32 +322,14 @@ Use the prefix `pixelguard-plugin-`:
 - `pixelguard-plugin-json-reporter`
 - `pixelguard-plugin-s3-storage`
 
-### Package.json Keywords
+Scoped packages such as `@acme/pixelguard-plugin-s3` work as well.
 
-Add keywords for discoverability:
+### Package.json Keywords
 
 ```json
 {
-  "keywords": [
-    "pixelguard",
-    "pixelguard-plugin",
-    "visual-regression",
-    "screenshot-testing"
-  ]
+	"keywords": ["pixelguard", "pixelguard-plugin", "visual-regression", "screenshot-testing"]
 }
-```
-
-### npm Publish
-
-```bash
-# Build
-npm run build
-
-# Test
-npm pack  # Creates tarball for local testing
-
-# Publish
-npm publish
 ```
 
 ### Documentation
@@ -540,34 +341,32 @@ Include a README.md with:
 3. Configuration options
 4. Example usage
 
+See `examples/plugins/` in this repository for complete, working plugins of every category.
+
 ## Plugin Ideas
 
-Here are some plugin ideas to inspire you:
-
 ### Notifiers
+
 - Discord webhook notifier
 - Microsoft Teams notifier
-- Email notifier (SMTP)
 - GitHub PR comment notifier
 
 ### Reporters
+
 - JUnit XML reporter (for CI integration)
 - Markdown reporter
-- CSV reporter
-- Custom HTML template reporter
 
 ### Storage
-- AWS S3 storage
+
 - Google Cloud Storage
 - Azure Blob Storage
-- Custom HTTP API storage
 
 ### Capture
-- Puppeteer-based capture (alternative to Playwright)
+
 - Safari/WebKit capture
 - Mobile device capture (via cloud services)
 
 ### Differ
-- AI-powered diff (ignore expected animations)
+
 - Perceptual diff (focus on human-visible changes)
 - Region-of-interest diff (ignore specific areas)
