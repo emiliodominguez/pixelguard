@@ -1,0 +1,7 @@
+{
+	"pixelguard-aarch64-apple-darwin": "b0a7c06cc6bddd0bd16d3880a7ad9337e92f4e07b4ecbba94af3bca72e39cfa1",
+	"pixelguard-aarch64-unknown-linux-gnu": "90b1b5e390396a8eb1ed63a8a365928b173b33320e630fc984991fb6ec709c0e",
+	"pixelguard-x86_64-apple-darwin": "5872b0d084437af22855bab2896daa1cd5f9456164d8f3ac8511471a07a2dde9",
+	"pixelguard-x86_64-pc-windows-msvc.exe": "40c971883f66bda0e9076b353775137e38e0e11b0939ab2a5f9a44888dd50984",
+	"pixelguard-x86_64-unknown-linux-gnu": "4753d15cf72fab5114a10d2bf58a5ea09801f37fa001efb19a42e56108a27b48"
+}
