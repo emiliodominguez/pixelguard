@@ -2,25 +2,31 @@
 set -euo pipefail
 
 # Pixelguard Release Script
-# Usage: ./scripts/release.sh <version>
-# Example: ./scripts/release.sh 0.2.0
+# Usage: ./scripts/release.sh <version> [--local]
+# Example: ./scripts/release.sh 0.2.1 --local
 #
 # Flow:
 #   1. Verify versions, a clean main branch and passing tests
-#   2. Tag and push; CI builds every platform and creates the GitHub release
-#      with a SHA256SUMS file
-#   3. Turn SHA256SUMS into npm/pixelguard/checksums.json, which postinstall
-#      uses to verify the downloaded binary
-#   4. Publish the npm packages
+#   2. Build binaries and create the GitHub release with a SHA256SUMS file:
+#      - default: push the tag and let CI build every platform
+#      - --local: build every platform here (scripts/build-binaries.sh, needs
+#        Docker) and create the release and tag in one step; CI then sees an
+#        existing release and leaves its assets alone
+#   3. Turn SHA256SUMS into npm/pixelguard/checksums.json, which the wrapper
+#      uses to verify the downloaded binary, and commit it
+#   4. Publish the npm packages (npm asks for your OTP)
 #
-# Tags and releases are never force-pushed or recreated: a published version
-# is immutable, so fix problems by releasing a new version.
+# Tags and releases are never force-pushed or recreated, and their assets are
+# never replaced: the checksums on npm pin the exact bytes. Fix problems by
+# releasing a new version.
 #
 # Prerequisites:
 # - gh CLI installed and authenticated
 # - npm logged in (npm login)
 
-VERSION=${1:?"Usage: ./scripts/release.sh <version>"}
+VERSION=${1:?"Usage: ./scripts/release.sh <version> [--local]"}
+LOCAL_BUILD=false
+[ "${2:-}" = "--local" ] && LOCAL_BUILD=true
 TAG="v$VERSION"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -71,20 +77,34 @@ step "Test"
 cargo test --locked
 echo -e "${GREEN}✅ Tests passed${NC}"
 
-step "Tag"
-git tag -a "$TAG" -m "Release $TAG"
-git push origin "$TAG"
-echo -e "${GREEN}✅ Pushed $TAG; CI is building release binaries${NC}"
+if [ "$LOCAL_BUILD" = true ]; then
+    step "Build binaries locally"
+    DIST_DIR=$(mktemp -d)
+    ./scripts/build-binaries.sh "$DIST_DIR"
 
-step "Wait for CI release"
-for _ in $(seq 1 120); do
-    if gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "SHA256SUMS"; then
-        break
-    fi
-    sleep 30
-done
-gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep -qx "SHA256SUMS" \
-    || fail "CI did not publish $TAG with SHA256SUMS within an hour. Check the CI run."
+    step "Create release"
+    # Creating the release also creates the tag, so CI finds an existing
+    # release when the tag event arrives and does not touch its assets.
+    gh release create "$TAG" "$DIST_DIR"/pixelguard-* "$DIST_DIR/SHA256SUMS" \
+        --repo "$REPO" --target "$(git rev-parse HEAD)" --title "$TAG" --generate-notes
+    git fetch origin --tags
+    echo -e "${GREEN}✅ Created $TAG with locally built binaries${NC}"
+else
+    step "Tag"
+    git tag -a "$TAG" -m "Release $TAG"
+    git push origin "$TAG"
+    echo -e "${GREEN}✅ Pushed $TAG; CI is building release binaries${NC}"
+
+    step "Wait for CI release"
+    for _ in $(seq 1 120); do
+        if gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "SHA256SUMS"; then
+            break
+        fi
+        sleep 30
+    done
+    gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep -qx "SHA256SUMS" \
+        || fail "CI did not publish $TAG with SHA256SUMS within an hour. Check the CI run."
+fi
 
 step "Checksums"
 WORK_DIR=$(mktemp -d)
@@ -102,7 +122,10 @@ if (Object.keys(sums).length === 0) throw new Error("SHA256SUMS is empty");
 fs.writeFileSync(process.argv[2], JSON.stringify(sums, null, "\t") + "\n");
 ' "$WORK_DIR/SHA256SUMS" "npm/pixelguard/checksums.json"
 cat npm/pixelguard/checksums.json
-echo -e "${GREEN}✅ checksums.json generated${NC}"
+git add npm/pixelguard/checksums.json
+git commit -m "chore(npm): add $TAG binary checksums"
+git push origin main
+echo -e "${GREEN}✅ checksums.json generated and committed${NC}"
 
 step "Publish to npm"
 (cd npm/plugin-types && npm run build && npm publish --access public)

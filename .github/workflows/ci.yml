@@ -188,12 +188,29 @@ jobs:
     permissions:
       contents: write
     steps:
+      # A release that already exists was published locally (scripts/release.sh --local)
+      # and its checksums are already on npm. Never replace its binaries: rebuilt
+      # binaries differ byte-for-byte and would break every verified install.
+      - name: Check for an existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; leaving its assets untouched."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download all artifacts
+        if: steps.existing.outputs.exists == 'false'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
 
       - name: Prepare release assets
+        if: steps.existing.outputs.exists == 'false'
         run: |
           mkdir -p release
           for dir in artifacts/pixelguard-*; do
@@ -209,7 +226,10 @@ jobs:
           cat SHA256SUMS
 
       - name: Create GitHub Release
+        if: steps.existing.outputs.exists == 'false'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: release/*
           generate_release_notes: true
+          overwrite_files: false
+          fail_on_unmatched_files: true
