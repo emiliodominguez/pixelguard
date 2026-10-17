@@ -1,7 +1,7 @@
 {
-	"pixelguard-aarch64-apple-darwin": "b0a7c06cc6bddd0bd16d3880a7ad9337e92f4e07b4ecbba94af3bca72e39cfa1",
-	"pixelguard-aarch64-unknown-linux-gnu": "90b1b5e390396a8eb1ed63a8a365928b173b33320e630fc984991fb6ec709c0e",
-	"pixelguard-x86_64-apple-darwin": "5872b0d084437af22855bab2896daa1cd5f9456164d8f3ac8511471a07a2dde9",
-	"pixelguard-x86_64-pc-windows-msvc.exe": "40c971883f66bda0e9076b353775137e38e0e11b0939ab2a5f9a44888dd50984",
-	"pixelguard-x86_64-unknown-linux-gnu": "4753d15cf72fab5114a10d2bf58a5ea09801f37fa001efb19a42e56108a27b48"
+	"pixelguard-aarch64-apple-darwin": "ae32a6ed75cb8d7addd1dc06c33dd727b078b659ea3531c13a4f50e530f34c57",
+	"pixelguard-aarch64-unknown-linux-gnu": "7083591ec576748970c1a77353089a8f5991f60ee58f6c6a3ceeb51a65f75e37",
+	"pixelguard-x86_64-apple-darwin": "040c8530f824547beb9828b3e54380a2498beecc628364fb184cec72641dc3c6",
+	"pixelguard-x86_64-pc-windows-msvc.exe": "d4f3258bb253d8a37ae69f018511c898e46df63f50de9bd50d5c999c7caa7c0d",
+	"pixelguard-x86_64-unknown-linux-gnu": "0bed21f062ae6d1f350e2c3d9582b2a8283f3f5e3f70d007bd20a33c72cbc12f"
 }
