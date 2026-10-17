@@ -8,6 +8,8 @@
 	const indexLinks = Array.from(document.querySelectorAll(".index a[data-target]"));
 	const searchInput = document.getElementById("search");
 	const saveState = document.getElementById("save-state");
+	const reviewProgress = document.getElementById("review-progress");
+	const progressFill = document.getElementById("progress-fill");
 	const exportButton = document.getElementById("export-decisions");
 
 	/**
@@ -473,7 +475,7 @@
 		return [
 			el("div", { class: "changes-head" }, [
 				el("span", { class: "changes-position", text: `Area ${data.region + 1} of ${regions.length}` }),
-				strip,
+				regions.length > 1 ? strip : null,
 			]),
 			el("div", { class: "changes-crops" }, [
 				crop("Baseline", data.baseline, data.baselineSize, region),
@@ -898,6 +900,9 @@
 		});
 
 		saveState.classList.remove("is-saved");
+		reviewProgress.hidden = reviewable === 0;
+		reviewProgress.classList.toggle("is-complete", reviewable > 0 && decided === reviewable);
+		progressFill.style.transform = `scaleX(${reviewable === 0 ? 0 : decided / reviewable})`;
 		if (reviewable === 0) {
 			saveState.textContent = "";
 		} else if (decided === reviewable) {

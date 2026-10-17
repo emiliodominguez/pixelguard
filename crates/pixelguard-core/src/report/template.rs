@@ -160,7 +160,7 @@ fn render_topbar(html: &mut String) {
     );
     html.push_str(
         r#"<div class="topbar-actions">
-<span class="save-state" id="save-state" aria-live="polite"></span>
+<div class="review-progress" id="review-progress" hidden><span class="progress-track" aria-hidden="true"><span class="progress-fill" id="progress-fill"></span></span><span class="save-state" id="save-state" aria-live="polite"></span></div>
 <div class="segmented" role="group" aria-label="Theme">
 <button type="button" data-theme-choice="auto" aria-pressed="true">Auto</button>
 <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
@@ -174,7 +174,9 @@ fn render_topbar(html: &mut String) {
 }
 
 fn render_index(html: &mut String, entries: &[Entry]) {
-    html.push_str("<nav class=\"index\" aria-label=\"Screenshots to review\">\n");
+    html.push_str(
+        "<nav class=\"index\" aria-label=\"Screenshots to review\">\n<div class=\"index-list\">\n",
+    );
 
     if entries.is_empty() {
         html.push_str("<p class=\"index-empty\">Nothing to review.</p>\n");
@@ -192,41 +194,60 @@ fn render_index(html: &mut String, entries: &[Entry]) {
 
         let _ = writeln!(
             html,
-            "<div class=\"index-group\">\n<h2 class=\"index-heading\">{}</h2>\n<ol>",
-            heading
+            "<div class=\"index-group\">\n<h2 class=\"index-heading\">{}<span class=\"count\">{}</span></h2>\n<ol>",
+            heading,
+            members.len(),
         );
         for (position, entry) in members {
             let meta = match entry {
                 Entry::Changed(shot) => format!("{:.2}%", shot.diff_percentage),
                 _ => String::new(),
             };
+            let (component, story, viewport) = name_parts(entry.name());
+            let mut name = html_escape(story);
+            if !viewport.is_empty() {
+                let _ = write!(
+                    name,
+                    "<span class=\"name-quiet\">@{}</span>",
+                    html_escape(viewport)
+                );
+            }
+            if !component.is_empty() {
+                let _ = write!(
+                    name,
+                    "<span class=\"index-component\">{}</span>",
+                    html_escape(component)
+                );
+            }
             let _ = writeln!(
                 html,
-                "<li><a href=\"#shot-{id}\" data-target=\"shot-{id}\"><span class=\"status status--{status}\" title=\"{heading}\">{letter}</span><span class=\"index-name\">{name}</span><span class=\"index-meta\" data-meta-for=\"shot-{id}\" data-diff=\"{meta}\">{meta}</span></a></li>",
+                "<li><a href=\"#shot-{id}\" data-target=\"shot-{id}\" title=\"{full}\"><span class=\"status status--{status}\" title=\"{heading}\">{letter}</span><span class=\"index-name\">{name}</span><span class=\"index-meta\" data-meta-for=\"shot-{id}\" data-diff=\"{meta}\">{meta}</span></a></li>",
                 id = position,
+                full = html_escape(entry.name()),
                 status = status,
                 heading = heading,
                 letter = entry.letter(),
-                name = html_escape(entry.name()),
+                name = name,
                 meta = meta,
             );
         }
         html.push_str("</ol>\n</div>\n");
     }
+    html.push_str("</div>\n");
 
     if entries
         .iter()
         .any(|entry| matches!(entry, Entry::Changed(_)))
     {
         html.push_str(
-            r#"<div class="keys" aria-label="Keyboard shortcuts">
-<span><kbd>j</kbd> <kbd>k</kbd> next and previous</span>
-<span><kbd>a</kbd> approve, <kbd>r</kbd> reject</span>
-<span><kbd>1</kbd>–<kbd>6</kbd> comparison view</span>
-<span><kbd>n</kbd> <kbd>p</kbd> next and previous changed area</span>
-<span><kbd>f</kbd> pause or resume flicker</span>
-<span><kbd>/</kbd> filter by name</span>
-</div>
+            r#"<dl class="keys" aria-label="Keyboard shortcuts">
+<div title="Next and previous screenshot"><dt><kbd>j</kbd><kbd>k</kbd></dt><dd>Move</dd></div>
+<div title="Approve or reject the current screenshot"><dt><kbd>a</kbd><kbd>r</kbd></dt><dd>Decide</dd></div>
+<div title="Switch comparison view, 1 to 6"><dt><kbd>1</kbd><kbd>6</kbd></dt><dd>View</dd></div>
+<div title="Next and previous changed area"><dt><kbd>n</kbd><kbd>p</kbd></dt><dd>Areas</dd></div>
+<div title="Pause or resume flicker"><dt><kbd>f</kbd></dt><dd>Flicker</dd></div>
+<div title="Filter by name"><dt><kbd>/</kbd></dt><dd>Filter</dd></div>
+</dl>
 "#,
         );
     }
@@ -320,7 +341,7 @@ fn failure_hint(error: &str) -> Option<&'static str> {
 }
 
 fn render_toolbar(html: &mut String, result: &DiffResult) {
-    html.push_str("<div class=\"toolbar\">\n<input class=\"search\" id=\"search\" type=\"search\" placeholder=\"Filter by name\" aria-label=\"Filter screenshots by name\" autocomplete=\"off\">\n");
+    html.push_str("<div class=\"toolbar\">\n<div class=\"search-field\"><input class=\"search\" id=\"search\" type=\"search\" placeholder=\"Filter by name\" aria-label=\"Filter screenshots by name\" autocomplete=\"off\"><kbd aria-hidden=\"true\">/</kbd></div>\n");
 
     let counts = [
         ("failed", "Failed", result.failed.len()),
@@ -342,7 +363,7 @@ fn render_toolbar(html: &mut String, result: &DiffResult) {
     }
 
     if !result.changed.is_empty() {
-        html.push_str("<div class=\"segmented\" role=\"group\" aria-label=\"Comparison view\">\n");
+        html.push_str("<div class=\"toolbar-views\">\n<div class=\"segmented\" role=\"group\" aria-label=\"Comparison view\">\n");
         for (view, label, key) in VIEWS {
             let _ = writeln!(
                 html,
@@ -365,18 +386,9 @@ fn render_toolbar(html: &mut String, result: &DiffResult) {
 </div>
 <div class="view-options" data-view-options="changes">
 <button type="button" class="button" data-step-change="-1" title="Previous changed area (p)">Previous</button>
-<button type="button" class="button" data-step-change="1" title="Next changed area (n)">Next change</button>
+<button type="button" class="button" data-step-change="1" title="Next changed area (n)">Next area</button>
 </div>
-"#,
-        );
-    }
-
-    if result.changed.len() > 1 {
-        html.push_str(
-            r#"<select class="sort" id="sort" aria-label="Sort changed screenshots">
-<option value="name">Sort by name</option>
-<option value="diff">Largest change first</option>
-</select>
+</div>
 "#,
         );
     }
@@ -395,12 +407,22 @@ fn render_groups(html: &mut String, entries: &[Entry], assets: &Assets) {
             continue;
         }
 
+        let sort = if status == "changed" && members.len() > 1 {
+            r#"<select class="sort" id="sort" aria-label="Sort changed screenshots">
+<option value="name">By name</option>
+<option value="diff">Largest change first</option>
+</select>"#
+        } else {
+            ""
+        };
         let _ = writeln!(
             html,
-            "<section class=\"group\" data-group=\"{status}\">\n<h2 class=\"group-title\">{heading}<span class=\"count\">{count}</span></h2>\n<div id=\"{status}-list\">",
+            "<section class=\"group\" data-group=\"{status}\">\n<div class=\"group-head\"><h2 class=\"group-title\"><span class=\"status status--{status}\" aria-hidden=\"true\">{letter}</span>{heading}<span class=\"count\">{count}</span></h2>{sort}</div>\n<div id=\"{status}-list\">",
             status = status,
+            letter = members[0].1.letter(),
             heading = heading,
             count = members.len(),
+            sort = sort,
         );
         for (position, entry) in members {
             render_entry(html, position, entry, assets);
@@ -432,7 +454,7 @@ fn render_entry(html: &mut String, position: usize, entry: &Entry, assets: &Asse
             let _ = writeln!(
                 html,
                 "<div class=\"shot-head\"><h3 class=\"shot-name\">{}</h3><span class=\"shot-meta\">Could not be captured or compared</span></div>",
-                escaped,
+                styled_name(name),
             );
             if let Some(hint) = failure_hint(&failure.error) {
                 let _ = writeln!(html, "<p class=\"failure-hint\">{}</p>", hint);
@@ -458,8 +480,9 @@ fn render_entry(html: &mut String, position: usize, entry: &Entry, assets: &Asse
             };
             let _ = writeln!(
                 html,
-                "<div class=\"shot-head\"><h3 class=\"shot-name\">{escaped}</h3><span class=\"shot-diff\">{percent:.2}% of pixels differ{areas}</span>\n<div class=\"decision\"><button type=\"button\" class=\"button\" data-action=\"approve\" data-shot=\"{escaped}\" data-hash=\"{hash}\" aria-pressed=\"false\">Approve<kbd>a</kbd></button><button type=\"button\" class=\"button\" data-action=\"reject\" data-shot=\"{escaped}\" data-hash=\"{hash}\" aria-pressed=\"false\">Reject<kbd>r</kbd></button></div></div>",
+                "<div class=\"shot-head\"><h3 class=\"shot-name\">{styled}</h3><span class=\"shot-diff\">{percent:.2}% of pixels differ{areas}</span>\n<div class=\"decision\"><button type=\"button\" class=\"button\" data-action=\"approve\" data-shot=\"{escaped}\" data-hash=\"{hash}\" aria-pressed=\"false\">Approve<kbd>a</kbd></button><button type=\"button\" class=\"button\" data-action=\"reject\" data-shot=\"{escaped}\" data-hash=\"{hash}\" aria-pressed=\"false\">Reject<kbd>r</kbd></button></div></div>",
                 escaped = escaped,
+                styled = styled_name(name),
                 percent = shot.diff_percentage,
                 areas = areas,
                 hash = hash,
@@ -470,7 +493,7 @@ fn render_entry(html: &mut String, position: usize, entry: &Entry, assets: &Asse
             let _ = writeln!(
                 html,
                 "<div class=\"shot-head\"><h3 class=\"shot-name\">{}</h3><span class=\"shot-meta\">New screenshot without a baseline</span></div>\n<div class=\"compare compare--single\">",
-                escaped,
+                styled_name(name),
             );
             render_frame(
                 html,
@@ -486,7 +509,7 @@ fn render_entry(html: &mut String, position: usize, entry: &Entry, assets: &Asse
             let _ = writeln!(
                 html,
                 "<div class=\"shot-head\"><h3 class=\"shot-name\">{}</h3><span class=\"shot-meta\">No longer captured</span></div>\n<div class=\"compare compare--single\">",
-                escaped,
+                styled_name(name),
             );
             render_frame(
                 html,
@@ -628,7 +651,12 @@ fn render_unchanged(html: &mut String, result: &DiffResult) {
     for (component, stories) in &groups {
         html.push_str("<section class=\"unchanged-group\" data-unchanged-group>\n");
         if !component.is_empty() {
-            let _ = writeln!(html, "<h3>{}</h3>", html_escape(component));
+            let _ = writeln!(
+                html,
+                "<h3>{}<span class=\"count\">{}</span></h3>",
+                html_escape(component),
+                stories.len()
+            );
         }
         html.push_str("<ul>\n");
         for story in stories {
@@ -667,6 +695,42 @@ fn render_zoom(html: &mut String) {
 </dialog>
 "#,
     );
+}
+
+/// Splits a Storybook-style name such as "components-button--primary@mobile"
+/// into component, story and viewport. Parts a name does not have are empty, so
+/// a plain name like "home" is all story.
+fn name_parts(name: &str) -> (&str, &str, &str) {
+    let (rest, viewport) = name.rsplit_once('@').unwrap_or((name, ""));
+    let (component, story) = rest.split_once("--").unwrap_or(("", rest));
+    (component, story, viewport)
+}
+
+/// The full screenshot name with the story emphasized and the component and
+/// viewport quieter. Selecting and copying it still gives the exact name.
+fn styled_name(name: &str) -> String {
+    let (component, story, viewport) = name_parts(name);
+    let mut styled = String::new();
+    if !component.is_empty() {
+        let _ = write!(
+            styled,
+            "<span class=\"name-quiet\">{}--</span><wbr>",
+            html_escape(component)
+        );
+    }
+    let _ = write!(
+        styled,
+        "<span class=\"name-story\">{}</span>",
+        html_escape(story)
+    );
+    if !viewport.is_empty() {
+        let _ = write!(
+            styled,
+            "<span class=\"name-quiet\">@{}</span>",
+            html_escape(viewport)
+        );
+    }
+    styled
 }
 
 /// Percent-encodes a screenshot name for use as one URL path segment.
